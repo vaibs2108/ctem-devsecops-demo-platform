@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: ctem-devsecops-ai-platform
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MODEL_NAME
+        value: gpt-4o-mini
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: LANGCHAIN_TRACING_V2
+        value: "false"
+      - key: LANGCHAIN_API_KEY
+        sync: false
+      - key: LANGCHAIN_PROJECT
+        value: ai-security-showcase
+      - key: LANGCHAIN_ENDPOINT
+        value: https://api.smith.langchain.com

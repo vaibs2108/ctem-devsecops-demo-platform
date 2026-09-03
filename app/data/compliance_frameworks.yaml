@@ -1,0 +1,589 @@
+# ============================================================================
+# AI Capability Demo — Compliance & Framework Mappings
+# Version: 1.0
+#
+# Authoritative reference for mapping findings, techniques, and rules to
+# industry frameworks across all four use cases.
+#
+# NOTE: Technique IDs use MITRE ATT&CK v14 notation.  Sub-techniques are
+# separated by a dot (e.g. T1059.001 = PowerShell under Command & Scripting
+# Interpreter).
+# ============================================================================
+
+# --------------------------------------------------------------------------
+# UC1 — AI-Led Continuous Threat Exposure Management (CTEM)
+# --------------------------------------------------------------------------
+uc1_ctem:
+  accent_colour: "#00d4ff"
+
+  mitre_attack:
+    techniques:
+      - id: T1190
+        name: Exploit Public-Facing Application
+        tactic: Initial Access
+      - id: T1133
+        name: External Remote Services
+        tactic: Initial Access
+      - id: T1078
+        name: Valid Accounts
+        tactic: [Initial Access, Persistence, Privilege Escalation, Defense Evasion]
+      - id: T1059
+        name: Command and Scripting Interpreter
+        tactic: Execution
+      - id: T1210
+        name: Exploitation of Remote Services
+        tactic: Lateral Movement
+      - id: T1068
+        name: Exploitation for Privilege Escalation
+        tactic: Privilege Escalation
+      - id: T1505.003
+        name: Web Shell
+        tactic: Persistence
+      - id: T1070.004
+        name: File Deletion
+        tactic: Defense Evasion
+      - id: T1071.001
+        name: Web Protocols
+        tactic: Command and Control
+      - id: T1486
+        name: Data Encrypted for Impact
+        tactic: Impact
+
+  nist_csf_2_0:
+    categories:
+      - id: ID.AM
+        name: Asset Management
+        description: Identify and manage assets within the CTEM scope
+      - id: ID.RA
+        name: Risk Assessment
+        description: Identify and prioritise vulnerabilities by business risk
+      - id: PR.IP
+        name: Information Protection Processes and Procedures
+        description: Patch management and configuration hardening
+      - id: PR.MA
+        name: Maintenance
+        description: Timely remediation of validated findings
+      - id: DE.CM
+        name: Continuous Monitoring
+        description: Ongoing vulnerability scanning and exposure tracking
+      - id: RS.AN
+        name: Analysis
+        description: Validation and false-positive triage of findings
+      - id: RC.RP
+        name: Recovery Planning
+        description: Mobilisation and SLA-driven remediation workflows
+
+  cis_benchmarks:
+    - id: CIS-1
+      name: Inventory and Control of Enterprise Assets
+      relevance: Scoping stage — asset discovery and classification
+    - id: CIS-2
+      name: Inventory and Control of Software Assets
+      relevance: SBOM analysis and software component tracking
+    - id: CIS-3
+      name: Data Protection
+      relevance: Business criticality classification of data stores
+    - id: CIS-4
+      name: Secure Configuration of Enterprise Assets and Software
+      relevance: Misconfiguration detection and remediation
+    - id: CIS-7
+      name: Continuous Vulnerability Management
+      relevance: Core CTEM lifecycle — discovery, prioritisation, validation
+    - id: CIS-12
+      name: Network Infrastructure Management
+      relevance: Network segmentation validation during exploitation testing
+    - id: CIS-16
+      name: Application Software Security
+      relevance: Dependency-level CVE tracking (SCA / SBOM)
+    - id: CIS-18
+      name: Penetration Testing
+      relevance: Validation stage — exploitability confirmation
+
+  cisa_kev:
+    description: >
+      CISA Known Exploited Vulnerabilities catalogue.  Any CVE on the KEV list
+      receives automatic priority elevation regardless of CVSS score.  The
+      platform tracks KEV collision rate as a top-level KPI.
+    feed_url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+
+  cvss_epss:
+    description: >
+      CVSS v3.1 base scores are enriched with EPSS (Exploit Prediction Scoring
+      System) probabilities.  The risk_score formula used in prioritisation:
+      risk_score = (cvss_score × 0.4) + (epss_score × 100 × 0.3)
+                 + (kev_flag × 20) + (internet_exposed × 10)
+
+# --------------------------------------------------------------------------
+# UC2 — Autonomous Threat Hunting
+# --------------------------------------------------------------------------
+uc2_threat_hunting:
+  accent_colour: "#ff4444"
+
+  mitre_attack:
+    techniques:
+      # Initial Access
+      - id: T1190
+        name: Exploit Public-Facing Application
+        tactic: Initial Access
+      - id: T1078
+        name: Valid Accounts
+        tactic: [Initial Access, Persistence, Privilege Escalation]
+      - id: T1078.002
+        name: Domain Accounts
+        tactic: [Initial Access, Persistence]
+      # Execution
+      - id: T1059.001
+        name: PowerShell
+        tactic: Execution
+      - id: T1059.003
+        name: Windows Command Shell
+        tactic: Execution
+      - id: T1059.006
+        name: Python
+        tactic: Execution
+      - id: T1047
+        name: Windows Management Instrumentation
+        tactic: Execution
+      # Persistence
+      - id: T1053.005
+        name: Scheduled Task
+        tactic: [Execution, Persistence, Privilege Escalation]
+      - id: T1543.003
+        name: Windows Service
+        tactic: [Persistence, Privilege Escalation]
+      - id: T1136.001
+        name: Local Account
+        tactic: Persistence
+      # Privilege Escalation
+      - id: T1068
+        name: Exploitation for Privilege Escalation
+        tactic: Privilege Escalation
+      - id: T1548.002
+        name: Bypass User Account Control
+        tactic: [Privilege Escalation, Defense Evasion]
+      # Defense Evasion
+      - id: T1070.001
+        name: Clear Windows Event Logs
+        tactic: Defense Evasion
+      - id: T1562.001
+        name: Disable or Modify Tools
+        tactic: Defense Evasion
+      - id: T1027
+        name: Obfuscated Files or Information
+        tactic: Defense Evasion
+      # Credential Access
+      - id: T1003.001
+        name: LSASS Memory
+        tactic: Credential Access
+      - id: T1003.003
+        name: NTDS
+        tactic: Credential Access
+      - id: T1110.003
+        name: Password Spraying
+        tactic: Credential Access
+      # Discovery
+      - id: T1087.002
+        name: Domain Account
+        tactic: Discovery
+      - id: T1069.002
+        name: Domain Groups
+        tactic: Discovery
+      # Lateral Movement
+      - id: T1021.001
+        name: Remote Desktop Protocol
+        tactic: Lateral Movement
+      - id: T1021.002
+        name: SMB/Windows Admin Shares
+        tactic: Lateral Movement
+      - id: T1021.006
+        name: Windows Remote Management
+        tactic: Lateral Movement
+      # Collection & Exfiltration
+      - id: T1560.001
+        name: Archive via Utility
+        tactic: Collection
+      - id: T1041
+        name: Exfiltration Over C2 Channel
+        tactic: Exfiltration
+      # Command and Control
+      - id: T1071.001
+        name: Web Protocols
+        tactic: Command and Control
+      - id: T1105
+        name: Ingress Tool Transfer
+        tactic: Command and Control
+      - id: T1572
+        name: Protocol Tunneling
+        tactic: Command and Control
+
+  nist_csf_2_0:
+    categories:
+      - id: DE.AE
+        name: Anomalies and Events
+        description: Hypothesis generation from anomaly signals
+      - id: DE.CM
+        name: Continuous Monitoring
+        description: SIEM event ingestion and baseline deviation
+      - id: DE.DP
+        name: Detection Processes
+        description: Formalised hunt processes and playbooks
+      - id: RS.AN
+        name: Analysis
+        description: Investigation and evidence correlation
+      - id: RS.MI
+        name: Mitigation
+        description: Containment and neutralisation actions
+      - id: RS.RP
+        name: Response Planning
+        description: HITL approval workflows for high-impact actions
+
+  nist_sp_800_61r3:
+    phases:
+      - name: Preparation
+        description: Hypothesis library, data source onboarding, playbook authoring
+      - name: Detection & Analysis
+        description: Anomaly detection, cross-source correlation, evidence chaining
+      - name: Containment, Eradication & Recovery
+        description: Isolation, credential reset, persistence removal
+      - name: Post-Incident Activity
+        description: Lessons learned, detection gap closure, rule promotion
+
+# --------------------------------------------------------------------------
+# UC3 — AI-Enabled Penetration Testing
+# --------------------------------------------------------------------------
+uc3_pen_testing:
+  accent_colour: "#ffbb33"
+
+  mitre_attack:
+    techniques:
+      # Reconnaissance
+      - id: T1595.002
+        name: Vulnerability Scanning
+        tactic: Reconnaissance
+      - id: T1592
+        name: Gather Victim Host Information
+        tactic: Reconnaissance
+      - id: T1593.002
+        name: Search Engines
+        tactic: Reconnaissance
+      - id: T1596.005
+        name: Scan Databases
+        tactic: Reconnaissance
+      # Initial Access
+      - id: T1190
+        name: Exploit Public-Facing Application
+        tactic: Initial Access
+      - id: T1078
+        name: Valid Accounts
+        tactic: Initial Access
+      - id: T1566.001
+        name: Spearphishing Attachment
+        tactic: Initial Access
+      # Execution
+      - id: T1059.001
+        name: PowerShell
+        tactic: Execution
+      - id: T1203
+        name: Exploitation for Client Execution
+        tactic: Execution
+      # Privilege Escalation
+      - id: T1068
+        name: Exploitation for Privilege Escalation
+        tactic: Privilege Escalation
+      - id: T1548.002
+        name: Bypass User Account Control
+        tactic: Privilege Escalation
+      # Lateral Movement
+      - id: T1021.002
+        name: SMB/Windows Admin Shares
+        tactic: Lateral Movement
+      - id: T1550.002
+        name: Pass the Hash
+        tactic: Lateral Movement
+      # Impact
+      - id: T1486
+        name: Data Encrypted for Impact
+        tactic: Impact
+
+  nist_csf_2_0:
+    categories:
+      - id: ID.RA
+        name: Risk Assessment
+        description: Scope definition and attack surface enumeration
+      - id: PR.AC
+        name: Access Control
+        description: Authentication bypass and privilege escalation testing
+      - id: PR.DS
+        name: Data Security
+        description: Data exfiltration path validation
+      - id: PR.PT
+        name: Protective Technology
+        description: Control bypass testing (WAF, IDS, segmentation)
+      - id: DE.CM
+        name: Continuous Monitoring
+        description: Detection evasion testing against security controls
+      - id: RS.AN
+        name: Analysis
+        description: Exploit chain analysis and impact assessment
+
+  owasp_top_10_2021:
+    - id: A01
+      name: Broken Access Control
+      cwe_ids: [CWE-200, CWE-284, CWE-285, CWE-639, CWE-862]
+      pentest_focus: IDOR, privilege escalation, missing function-level access control
+    - id: A02
+      name: Cryptographic Failures
+      cwe_ids: [CWE-259, CWE-327, CWE-328, CWE-330]
+      pentest_focus: Weak TLS, hardcoded secrets, insecure key storage
+    - id: A03
+      name: Injection
+      cwe_ids: [CWE-79, CWE-89, CWE-94, CWE-77]
+      pentest_focus: SQL injection, XSS, command injection, template injection
+    - id: A04
+      name: Insecure Design
+      cwe_ids: [CWE-209, CWE-256, CWE-501]
+      pentest_focus: Business logic flaws, rate limiting bypass, trust boundary violations
+    - id: A05
+      name: Security Misconfiguration
+      cwe_ids: [CWE-16, CWE-611]
+      pentest_focus: Default credentials, directory listing, verbose errors, XXE
+    - id: A06
+      name: Vulnerable and Outdated Components
+      cwe_ids: [CWE-1104]
+      pentest_focus: Known CVE exploitation in third-party libraries
+    - id: A07
+      name: Identification and Authentication Failures
+      cwe_ids: [CWE-287, CWE-306, CWE-384, CWE-798]
+      pentest_focus: Credential stuffing, session fixation, weak password policy
+    - id: A08
+      name: Software and Data Integrity Failures
+      cwe_ids: [CWE-502, CWE-829]
+      pentest_focus: Deserialization attacks, CI/CD pipeline poisoning
+    - id: A09
+      name: Security Logging and Monitoring Failures
+      cwe_ids: [CWE-117, CWE-223, CWE-778]
+      pentest_focus: Log injection, insufficient audit trails, blind spots
+    - id: A10
+      name: Server-Side Request Forgery (SSRF)
+      cwe_ids: [CWE-918]
+      pentest_focus: Cloud metadata access, internal service enumeration
+
+# --------------------------------------------------------------------------
+# UC4 — AI-Led Detection Engineering
+# --------------------------------------------------------------------------
+uc4_detection_engineering:
+  accent_colour: "#00ff88"
+
+  mitre_attack:
+    techniques:
+      # Broad detection coverage — representative techniques per tactic
+      # Initial Access
+      - id: T1190
+        name: Exploit Public-Facing Application
+        tactic: Initial Access
+      - id: T1078
+        name: Valid Accounts
+        tactic: [Initial Access, Persistence]
+      - id: T1566.001
+        name: Spearphishing Attachment
+        tactic: Initial Access
+      # Execution
+      - id: T1059.001
+        name: PowerShell
+        tactic: Execution
+      - id: T1059.003
+        name: Windows Command Shell
+        tactic: Execution
+      - id: T1047
+        name: Windows Management Instrumentation
+        tactic: Execution
+      - id: T1053.005
+        name: Scheduled Task
+        tactic: [Execution, Persistence]
+      # Persistence
+      - id: T1543.003
+        name: Windows Service
+        tactic: [Persistence, Privilege Escalation]
+      - id: T1136.001
+        name: Local Account
+        tactic: Persistence
+      - id: T1505.003
+        name: Web Shell
+        tactic: Persistence
+      # Privilege Escalation
+      - id: T1068
+        name: Exploitation for Privilege Escalation
+        tactic: Privilege Escalation
+      - id: T1548.002
+        name: Bypass User Account Control
+        tactic: [Privilege Escalation, Defense Evasion]
+      # Defense Evasion
+      - id: T1070.001
+        name: Clear Windows Event Logs
+        tactic: Defense Evasion
+      - id: T1562.001
+        name: Disable or Modify Tools
+        tactic: Defense Evasion
+      - id: T1027
+        name: Obfuscated Files or Information
+        tactic: Defense Evasion
+      # Credential Access
+      - id: T1003.001
+        name: LSASS Memory
+        tactic: Credential Access
+      - id: T1110.003
+        name: Password Spraying
+        tactic: Credential Access
+      # Discovery
+      - id: T1087.002
+        name: Domain Account
+        tactic: Discovery
+      - id: T1082
+        name: System Information Discovery
+        tactic: Discovery
+      # Lateral Movement
+      - id: T1021.001
+        name: Remote Desktop Protocol
+        tactic: Lateral Movement
+      - id: T1021.002
+        name: SMB/Windows Admin Shares
+        tactic: Lateral Movement
+      - id: T1550.002
+        name: Pass the Hash
+        tactic: Lateral Movement
+      # Collection
+      - id: T1560.001
+        name: Archive via Utility
+        tactic: Collection
+      # Exfiltration
+      - id: T1041
+        name: Exfiltration Over C2 Channel
+        tactic: Exfiltration
+      # Command and Control
+      - id: T1071.001
+        name: Web Protocols
+        tactic: Command and Control
+      - id: T1105
+        name: Ingress Tool Transfer
+        tactic: Command and Control
+      # Impact
+      - id: T1486
+        name: Data Encrypted for Impact
+        tactic: Impact
+
+  nist_csf_2_0:
+    categories:
+      - id: DE.AE
+        name: Anomalies and Events
+        description: Detection rule design for anomaly-based alerting
+      - id: DE.CM
+        name: Continuous Monitoring
+        description: Rule deployment across SIEM/EDR platforms
+      - id: DE.DP
+        name: Detection Processes
+        description: Coverage analysis, gap identification, rule lifecycle management
+      - id: PR.IP
+        name: Information Protection Processes
+        description: Detection-as-code CI/CD pipeline integration
+      - id: RS.AN
+        name: Analysis
+        description: Rule performance evaluation (precision, recall, F1)
+
+  sigma_rule_categories:
+    - category: process_creation
+      description: Detects suspicious process creation events
+      platforms: [Splunk, Sentinel, Chronicle, Elastic, XSIAM]
+      example_titles:
+        - Suspicious PowerShell Download Cradle
+        - Certutil LOLBin Abuse
+        - WMIC Remote Process Creation
+    - category: network_connection
+      description: Detects anomalous network connection patterns
+      platforms: [Splunk, Sentinel, Chronicle, Elastic, XSIAM]
+      example_titles:
+        - Outbound Connection to Known C2 Infrastructure
+        - DNS Tunneling via TXT Records
+        - Beaconing Behaviour Detection
+    - category: file_event
+      description: Detects suspicious file system operations
+      platforms: [Splunk, Sentinel, Chronicle, Elastic, XSIAM]
+      example_titles:
+        - Ransomware File Extension Modification
+        - Suspicious DLL Side-Loading
+        - Web Shell File Write
+    - category: registry_event
+      description: Detects suspicious Windows registry modifications
+      platforms: [Splunk, Sentinel, Elastic, XSIAM]
+      example_titles:
+        - Run Key Persistence
+        - AMSI Bypass via Registry
+        - Image File Execution Options Injection
+    - category: authentication
+      description: Detects anomalous authentication events
+      platforms: [Splunk, Sentinel, Chronicle, Elastic, XSIAM]
+      example_titles:
+        - Password Spraying Detection
+        - Service Account Interactive Login
+        - Impossible Travel Authentication
+    - category: sysmon
+      description: Sysmon-specific detections for endpoint visibility
+      platforms: [Splunk, Sentinel, Elastic]
+      example_titles:
+        - Sysmon Named Pipe Impersonation
+        - Sysmon DNS Query to Suspicious TLD
+        - Sysmon Process Access to LSASS
+
+  detection_platforms:
+    - name: Splunk
+      rule_language: SPL
+      description: Search Processing Language for Splunk Enterprise/Cloud
+    - name: Microsoft Sentinel
+      rule_language: KQL
+      description: Kusto Query Language for Azure Sentinel analytics rules
+    - name: Google Chronicle
+      rule_language: YARA-L
+      description: YARA-L 2.0 detection rules for Chronicle SIEM
+    - name: Palo Alto XSIAM
+      rule_language: XQL
+      description: XQL queries for Cortex XSIAM analytics
+    - name: Elastic Security
+      rule_language: EQL
+      description: Event Query Language for Elastic detection rules
+
+# --------------------------------------------------------------------------
+# Cross-Use-Case — Shared Mappings
+# --------------------------------------------------------------------------
+cross_use_case:
+  mitre_tactics:
+    - Reconnaissance
+    - Resource Development
+    - Initial Access
+    - Execution
+    - Persistence
+    - Privilege Escalation
+    - Defense Evasion
+    - Credential Access
+    - Discovery
+    - Lateral Movement
+    - Collection
+    - Command and Control
+    - Exfiltration
+    - Impact
+
+  severity_levels:
+    - Critical
+    - High
+    - Medium
+    - Low
+    - Informational
+
+  priority_mapping:
+    P1:
+      description: Immediate action required — active exploitation or critical exposure
+      sla_hours: 24
+    P2:
+      description: High urgency — exploitable with available PoC or on KEV list
+      sla_hours: 72
+    P3:
+      description: Standard — patch on next maintenance window
+      sla_hours: 168
