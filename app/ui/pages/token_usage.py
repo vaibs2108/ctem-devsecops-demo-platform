@@ -83,7 +83,7 @@ def render_token_usage_page(tracker: TokenUsageTracker):
         elif ratio >= 0.80:
             st.warning(f"🟡 **AMBER BUDGET WARNING (80%+):** Spent ${total_cost:.4f} of ${budget_ceil:.2f} (Utilization: {ratio:.1%})")
         else:
-            st.success(f"🟢 **BUDGET STATUS: SAFE** Spent ${total_cost:.4f} within `${budget_ceil:.2f}` limit.")
+            st.success(f"🟢 **BUDGET STATUS: SAFE** Spent **${total_cost:.4f}** within **${budget_ceil:.2f}** limit.")
             
     st.markdown("<br>", unsafe_allow_html=True)
 
