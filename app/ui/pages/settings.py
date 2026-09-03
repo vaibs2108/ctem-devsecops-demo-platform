@@ -34,22 +34,25 @@ def render_settings_page():
             "All settings are saved directly to your local `.env` configuration file."
         )
         
-        if "settings_openai_api_key" not in st.session_state:
-            st.session_state.settings_openai_api_key = os.getenv("OPENAI_API_KEY", "")
         if "settings_langchain_tracing" not in st.session_state:
             st.session_state.settings_langchain_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
-        if "settings_langchain_api_key" not in st.session_state:
-            st.session_state.settings_langchain_api_key = os.getenv("LANGCHAIN_API_KEY", "")
         if "settings_langchain_project" not in st.session_state:
             st.session_state.settings_langchain_project = os.getenv("LANGCHAIN_PROJECT", "ai-security-showcase")
-            
+
+        def _secret_status(env_var: str) -> str:
+            return "🔒 Currently configured" if os.getenv(env_var) else "⚠️ Not set"
+
         col_api_1, col_api_2 = st.columns(2)
         with col_api_1:
+            st.caption(_secret_status("OPENAI_API_KEY"))
             st.text_input(
                 "OpenAI API Key (OPENAI_API_KEY)",
                 type="password",
+                value="",
+                placeholder="Leave blank to keep the current key",
                 key="settings_openai_api_key",
-                help="Primary LLM authorization token (required for orchestrating the demo agents)"
+                help="Primary LLM authorization token (required for orchestrating the demo agents). "
+                     "The existing key is never shown here — enter a new one only if you want to replace it."
             )
             st.toggle(
                 "Enable LangSmith Tracing (LANGCHAIN_TRACING_V2)",
@@ -57,11 +60,15 @@ def render_settings_page():
                 help="Set to True to activate real-time prompt telemetry."
             )
         with col_api_2:
+            st.caption(_secret_status("LANGCHAIN_API_KEY"))
             st.text_input(
                 "LangSmith API Key (LANGCHAIN_API_KEY)",
                 type="password",
+                value="",
+                placeholder="Leave blank to keep the current key",
                 key="settings_langchain_api_key",
-                help="LangChain personal access key for smith.langchain.com"
+                help="LangChain personal access key for smith.langchain.com. "
+                     "The existing key is never shown here — enter a new one only if you want to replace it."
             )
             st.text_input(
                 "LangSmith Project Workspace (LANGCHAIN_PROJECT)",
@@ -194,16 +201,27 @@ def render_settings_page():
                     with st.expander(f"⚙️ Credentials for {tool.display_name}"):
                         for var in tool.required_env_vars:
                             session_key = f"settings_mcp_{name}_{var.lower()}"
-                            current_val = st.session_state.get(session_key, os.getenv(var, ""))
-                            
                             is_password = "KEY" in var or "PASSWORD" in var or "TOKEN" in var or "SECRET" in var
-                            new_val = st.text_input(
-                                f"Required Key: {var}",
-                                value=current_val,
-                                type="password" if is_password else "default",
-                                key=session_key,
-                                help=f"Set environment credential variable {var}"
-                            )
+
+                            if is_password:
+                                st.caption(_secret_status(var))
+                                st.text_input(
+                                    f"Required Key: {var}",
+                                    value="",
+                                    type="password",
+                                    placeholder="Leave blank to keep the current value",
+                                    key=session_key,
+                                    help=f"Set environment credential variable {var}. "
+                                         "The existing value is never shown here — enter a new one only to replace it."
+                                )
+                            else:
+                                current_val = st.session_state.get(session_key, os.getenv(var, ""))
+                                st.text_input(
+                                    f"Required Key: {var}",
+                                    value=current_val,
+                                    key=session_key,
+                                    help=f"Set environment credential variable {var}"
+                                )
                         
                         st.caption(f"Endpoints configured: {', '.join([f'{k}: {v}' for k,v in tool.endpoints.items()])}")
             st.markdown("<br>", unsafe_allow_html=True)
@@ -263,23 +281,31 @@ def render_settings_page():
 
         if st.button("💾 Apply Settings & Reload Connectors", use_container_width=True):
             env_updates = {}
-            
-            # LLM & Observability
-            if "settings_openai_api_key" in st.session_state:
+
+            # LLM & Observability — secret fields are only written when the
+            # user actually typed a replacement value, since they're never
+            # pre-filled with the existing secret (see _secret_status above).
+            if st.session_state.get("settings_openai_api_key"):
                 env_updates["OPENAI_API_KEY"] = st.session_state.settings_openai_api_key
             if "settings_langchain_tracing" in st.session_state:
                 env_updates["LANGCHAIN_TRACING_V2"] = "true" if st.session_state.settings_langchain_tracing else "false"
-            if "settings_langchain_api_key" in st.session_state:
+            if st.session_state.get("settings_langchain_api_key"):
                 env_updates["LANGCHAIN_API_KEY"] = st.session_state.settings_langchain_api_key
             if "settings_langchain_project" in st.session_state:
                 env_updates["LANGCHAIN_PROJECT"] = st.session_state.settings_langchain_project
 
-            # MCP Credentials
+            # MCP Credentials — same rule: only overwrite a secret var when a
+            # new value was actually typed, non-secret vars save as-is.
             for name, tool in registry.tools.items():
                 for var in tool.required_env_vars:
                     session_key = f"settings_mcp_{name}_{var.lower()}"
+                    is_password = "KEY" in var or "PASSWORD" in var or "TOKEN" in var or "SECRET" in var
                     if session_key in st.session_state:
-                        env_updates[var] = st.session_state[session_key]
+                        if is_password:
+                            if st.session_state[session_key]:
+                                env_updates[var] = st.session_state[session_key]
+                        else:
+                            env_updates[var] = st.session_state[session_key]
 
             # Write updates to .env and os.environ
             update_dotenv(env_updates)
