@@ -14,6 +14,7 @@ wheels/
 
 # Runtime-generated data (SQLite dbs), keep the folder via .gitkeep
 data/*.db
+data/*.db-*
 data/*.sqlite*
 
 # Editor/OS cruft

@@ -1,6 +1,6 @@
 """
 AI Capability Demo — Agents Repository
-Displays the catalog of all 10 specialized security agents with live sandbox testing.
+Displays the catalog of all 15 specialized security agents with live sandbox testing.
 AGENTS.md Section 9 & 5.1
 """
 
@@ -9,7 +9,7 @@ import streamlit as st
 import textwrap
 from app.ui.theme import (
     render_hero_banner, render_glass_card, render_badge,
-    ACCENT_BLUE, ACCENT_GREEN, ACCENT_AMBER
+    ACCENT_BLUE, ACCENT_GREEN, ACCENT_AMBER, ACCENT_PURPLE
 )
 
 # Detailed Agent Database matching AGENTS.md Section 9 & app/runtime/agent_manager.py
@@ -265,6 +265,143 @@ AGENTS_DB = {
                 }, indent=2)
             }
         ]
+    },
+    "Exposure Remediation": {
+        "color": ACCENT_PURPLE,
+        "framework": "NIST SP 800-40r4, CISA KEV / BOD 22-01, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
+        "note": "At runtime the first four roles run as one orchestrated planning stage, and RevalidationAgent runs after the customer's tooling executes the approved change. Each agent can also be tested on its own below.",
+        "agents": [
+            {
+                "name": "ExposureCorrelationAgent",
+                "stage": "Step 2 — Correlation",
+                "role": "Correlates a raw scanner signal with the identity it exposes, the business service it sits under, and exploit/threat context into one risk story with an attack path.",
+                "prompt": "You are an Exposure Correlation Analyst. Given one scanner finding, join it with asset context, the privileged identities reachable from the host, the business service and its regulatory scope, and live exploit intelligence (CISA KEV, EPSS). Describe how an attacker would get from the internet to business impact. Never invent facts that are not in the supplied context.",
+                "mitre": "T1190 (Exploit Public-Facing Application), T1552 (Unsecured Credentials)",
+                "default_input": json.dumps({
+                    "signal_id": "EXP-261024-0042",
+                    "asset": "cfl-prod-01",
+                    "cve": "CVE-2023-22515",
+                    "installed_version": "8.4.1",
+                    "internet_exposed": True,
+                    "service": "Engineering Knowledge Base (Tier 2, Confidential)",
+                    "identity": "svc-confluence-db (db_owner on cfl_prod)"
+                }, indent=2),
+                "sample_output": json.dumps({
+                    "status": "success",
+                    "confidence": 94,
+                    "verdict": "Internet-reachable admin-creation flaw with a database service account behind it",
+                    "findings": [
+                        "CVE-2023-22515 lets an unauthenticated request create a Confluence administrator on cfl-prod-01.",
+                        "The host runs as svc-confluence-db, whose credentials sit in confluence.cfg.xml (readable by the app user).",
+                        "CISA KEV lists the CVE (since 2023-10-05) with known ransomware use; EPSS is 0.992."
+                    ],
+                    "exposure_path": ["Internet", "alb-kb-prod", "cfl-prod-01", "svc-confluence-db", "PostgreSQL cfl_prod"]
+                }, indent=2)
+            },
+            {
+                "name": "PriorityExplainerAgent",
+                "stage": "Step 3 — Priority Explanation",
+                "role": "Explains why this exposure matters here rather than merely by CVSS, and ranks it against peer findings with an auditable factor breakdown.",
+                "prompt": "You are a Risk Prioritisation Specialist. Explain, in plain language for an engineering manager, why this exposure ranks where it does against peer findings. Use the supplied factors (active exploitation, exposure, identity blast radius, EPSS, business criticality, compensating controls). Always cite at least one peer finding that has an equal or higher CVSS but a lower real priority.",
+                "mitre": "N/A (Analytical / Planning)",
+                "default_input": json.dumps({
+                    "cve": "CVE-2023-22515",
+                    "cvss": 9.8,
+                    "kev": True,
+                    "epss": 0.992,
+                    "internet_exposed": True,
+                    "service_tier": "Tier 2",
+                    "peers": [
+                        {"cve": "CVE-2024-3094", "cvss": 10.0, "isolated": True, "kev": False},
+                        {"cve": "CVE-2023-38545", "cvss": 9.8, "isolated": True, "kev": False}
+                    ]
+                }, indent=2),
+                "sample_output": json.dumps({
+                    "status": "success",
+                    "confidence": 95,
+                    "verdict": "P1 - Critical (contextual score 96/100), fix within 24h",
+                    "findings": [
+                        "Ranks #1 on contextual risk while two peers with equal or higher CVSS rank far lower.",
+                        "Drivers: active exploitation +18, internet exposure +14, identity blast radius +8, EPSS +5.",
+                        "The CVSS 10.0 peer sits on an isolated dev build container and is not in KEV."
+                    ],
+                    "ranks": {"cvss_rank": 2, "contextual_rank": 1}
+                }, indent=2)
+            },
+            {
+                "name": "RemediationPlannerAgent",
+                "stage": "Step 4 — Remediation Path",
+                "role": "Evaluates patch, configuration, compensating-control and exception paths, names blockers such as change freezes or policy, and recommends one.",
+                "prompt": "You are a Remediation Planner. For the given exposure, compare every viable path (patch, configuration, compensating control, risk exception) on risk reduction, change risk, downtime and effort. Call out blockers such as change freezes, RTO limits and policy that forbids risk acceptance for internet-exposed KEV findings. Recommend exactly one path and justify it.",
+                "mitre": "N/A (Remediation / Change Planning)",
+                "default_input": json.dumps({
+                    "cve": "CVE-2023-22515",
+                    "installed_version": "8.4.1",
+                    "fixed_versions": ["8.3.3", "8.4.3", "8.5.2"],
+                    "constraints": {"change_freeze": False, "rto_hours": 8, "risk_acceptance_allowed": False}
+                }, indent=2),
+                "sample_output": json.dumps({
+                    "status": "success",
+                    "confidence": 93,
+                    "verdict": "Upgrade 8.4.1 to 8.4.3 (same release train) recommended",
+                    "findings": [
+                        "Same-train upgrade removes the vulnerable code with the smallest regression surface.",
+                        "Blocking /setup/* at the WAF is a useful interim control but the vendor says it is not a substitute for upgrading.",
+                        "Risk acceptance is not viable: internet-exposed, KEV-listed, ransomware-associated."
+                    ],
+                    "recommended_option": "patch"
+                }, indent=2)
+            },
+            {
+                "name": "ChangePackageAgent",
+                "stage": "Step 5 — Change Package",
+                "role": "Turns the chosen path into an approvable change package: owner, risk assessment, evidence, mitigation steps, rollback and validation criteria.",
+                "prompt": "You are a Change Package Author. Draft a change record a CAB or security lead can approve in two minutes: owner team, change type, risk assessment, three pieces of evidence, ordered mitigation steps that match the execution plan exactly, a concrete rollback and the validation criteria for the rescan. Be specific with versions, commands and windows.",
+                "mitre": "N/A (Change Enablement)",
+                "default_input": json.dumps({
+                    "option": "Upgrade Confluence 8.4.1 to 8.4.3",
+                    "owner_team": "Collaboration Platform",
+                    "window": "Emergency window tonight, 90 minutes",
+                    "execution_plan": ["Snapshot database", "Back up home directory", "Stop service", "Run installer", "Start service", "IoC check", "Verify version"]
+                }, indent=2),
+                "sample_output": json.dumps({
+                    "status": "success",
+                    "confidence": 92,
+                    "verdict": "Emergency change drafted for Security Lead + Service Owner approval",
+                    "findings": [
+                        "Risk: Low-Medium; in-place upgrade within one train with snapshot and tested rollback.",
+                        "Rollback: restore home archive and database snapshot, start 8.4.1 (about 20 minutes).",
+                        "Validation: version reports 8.4.3, rescan clears CVE-2023-22515, no unexpected administrators."
+                    ],
+                    "change_type": "Emergency",
+                    "approval_required": True
+                }, indent=2)
+            },
+            {
+                "name": "RevalidationAgent",
+                "stage": "Steps 8-9 — Rescan & Closure Evidence",
+                "role": "Interprets the verification rescan after the customer's tooling executes the change, decides whether exposure actually fell, and writes the closure evidence.",
+                "prompt": "You are a Verification and Closure Agent. A change was executed in the customer's own tooling and the scanner has re-checked the asset. The rescan result is authoritative: never claim an exposure is fixed unless it says so. State plainly whether exposure was reduced, reduced with residual risk, or not reduced, distinguish 'ticket closed' from 'exposure reduced', and name next actions.",
+                "mitre": "N/A (Verification / Assurance)",
+                "default_input": json.dumps({
+                    "change_id": "CHG0043127",
+                    "rescan": {"status": "remediated", "installed": "confluence 8.4.3"},
+                    "exposure_before": 96,
+                    "exposure_after": 4
+                }, indent=2),
+                "sample_output": json.dumps({
+                    "status": "success",
+                    "confidence": 96,
+                    "verdict": "Exposure reduced and verified",
+                    "findings": [
+                        "Verification rescan reports confluence 8.4.3, at or above the fixed release.",
+                        "Contextual exposure fell from 96 to 4; the ticket closes because the exposure is gone.",
+                        "Evidence bundle EVD-43127 recorded with approver, timestamps and before/after scan."
+                    ],
+                    "evidence_ref": "EVD-43127"
+                }, indent=2)
+            }
+        ]
     }
 }
 
@@ -272,7 +409,7 @@ AGENTS_DB = {
 def render_agents_page():
     """Render the interactive Agent Registry catalog."""
     st.markdown(
-        render_hero_banner("Security Agent Registry", "Inspect, customize, and test the 10 specialized AI security agents"),
+        render_hero_banner("Security Agent Registry", "Inspect, customize, and test the 15 specialized AI security agents"),
         unsafe_allow_html=True
     )
 
@@ -297,6 +434,8 @@ def render_agents_page():
         st.session_state.sandbox_agent = agents[0]
 
     st.markdown(f"**Aligned Frameworks:** {framework}")
+    if db.get("note"):
+        st.caption(db["note"])
 
     # Layout: left is the agent card grid, right is the sandbox playground
     col_cards, col_sandbox = st.columns([5, 4])

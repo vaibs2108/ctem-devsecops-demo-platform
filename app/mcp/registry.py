@@ -208,3 +208,29 @@ class MCPToolRegistry:
             },
             required_env_vars=["SERVICENOW_INSTANCE", "SERVICENOW_USERNAME", "SERVICENOW_PASSWORD"]
         )
+
+        self.tools["ansible_aap"] = MCPToolMetadata(
+            name="ansible_aap",
+            display_name="Ansible Automation Platform",
+            category="Remediation",
+            description="Configuration management and playbook execution for approved remediation changes.",
+            capabilities=["execute_playbook", "get_job"],
+            endpoints={
+                "launch_job": "/api/controller/v2/job_templates/{id}/launch/",
+                "get_job": "/api/controller/v2/jobs/{id}/"
+            },
+            required_env_vars=["ANSIBLE_AAP_URL", "ANSIBLE_AAP_TOKEN"]
+        )
+
+        self.tools["aws_ssm"] = MCPToolMetadata(
+            name="aws_ssm",
+            display_name="AWS Systems Manager",
+            category="Remediation",
+            description="Patch Manager and Run Command execution against managed cloud instances.",
+            capabilities=["run_command", "patch_instances"],
+            endpoints={
+                "send_command": "ssm:SendCommand",
+                "get_invocation": "ssm:GetCommandInvocation"
+            },
+            required_env_vars=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
+        )

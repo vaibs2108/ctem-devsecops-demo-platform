@@ -10,6 +10,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+REMEDIATION_KPI_NAMES = (
+    "Verified Closure Rate", "Closed Without Reduction", "Exposure Reduction", "Remediation MTTR", "Approval Turnaround",
+)
+
 
 class KPIEngine:
     """Computes all 20 security and execution KPIs dynamically from datasets.
@@ -115,9 +119,14 @@ class KPIEngine:
             gate_rate = 94.0
         self.kpis["Deployment Gate Pass Rate"] = round(gate_rate, 1)
 
-        # ── 3. Overall Scores ────────────────────────────────────────────────
+        # ── 3. Exposure Remediation KPIs ─────────────────────────────────────
+        self._prepare_remediation_base()
+        self.kpis.update(self._remediation_kpis())
+
+        # ── 4. Overall Scores ────────────────────────────────────────────────
         self.kpis["CTEM Score"] = self.get_use_case_score("ctem")
         self.kpis["DevSecOps Score"] = self.get_use_case_score("devsecops")
+        self.kpis["Exposure Remediation Score"] = self.get_use_case_score("remediation")
 
         # AI Readiness Index: Weighted average of the use-case scores
         self.kpis["AI Readiness Index"] = self.get_ai_readiness_index()
@@ -138,12 +147,76 @@ class KPIEngine:
             pr_approval = self.kpis.get("PR Approval Rate", 91.0)
             gate_rate = self.kpis.get("Deployment Gate Pass Rate", 94.0)
             score = (fix_rate * 0.35) + (pr_approval * 0.3) + (gate_rate * 0.35)
+        elif uc == "remediation":
+            k = self._remediation_kpis()
+            mttr_score = max(0.0, min(100.0, 100.0 - (k["Remediation MTTR"] - 12.0) * 1.5))
+            no_gap = max(0.0, 100.0 - k["Closed Without Reduction"] * 3.0)
+            score = (k["Verified Closure Rate"] * 0.30) + (k["Exposure Reduction"] * 0.30) + (no_gap * 0.20) + (mttr_score * 0.20)
         else:
             score = 75.0
         return round(min(100.0, max(0.0, score)), 1)
 
+    # ── Exposure Remediation ────────────────────────────────────────────────
+
+    def _prepare_remediation_base(self) -> None:
+        """Aggregate the historical remediation datasets once; live demo runs are layered on top at read time."""
+        signals = self.datasets.get("exposure_signals")
+        changes = self.datasets.get("change_records")
+        rescans = self.datasets.get("rescan_results")
+        base = {"n": 0, "remediated": 0, "closed": 0, "closed_wo_reduction": 0, "before": 0.0, "after": 0.0,
+                "mttr_sum": 0.0, "mttr_n": 0, "approval_sum": 0.0, "approval_n": 0}
+        if signals is not None and changes is not None and rescans is not None and not rescans.empty:
+            joined = rescans.merge(signals[["signal_id", "detected_at"]], on="signal_id", how="left")
+            base["n"] = len(rescans)
+            base["remediated"] = int((rescans["result"] == "Remediated").sum())
+            closed = rescans[rescans["ticket_closed"]]
+            base["closed"] = len(closed)
+            base["closed_wo_reduction"] = int((~closed["exposure_reduced"]).sum())
+            base["before"] = float(rescans["exposure_before"].sum())
+            base["after"] = float(rescans["exposure_after"].sum())
+            reduced = joined[joined["exposure_reduced"]]
+            if not reduced.empty:
+                hours = (pd.to_datetime(reduced["rescan_at"]) - pd.to_datetime(reduced["detected_at"])).dt.total_seconds() / 3600
+                base["mttr_sum"], base["mttr_n"] = float(hours.sum()), len(hours)
+            base["approval_sum"], base["approval_n"] = float(changes["approval_hours"].sum()), len(changes)
+        self._rem_base = base
+
+    def _remediation_kpis(self) -> Dict[str, float]:
+        b = dict(getattr(self, "_rem_base", {}) or {})
+        if not b:
+            b = {"n": 0, "remediated": 0, "closed": 0, "closed_wo_reduction": 0, "before": 0.0, "after": 0.0,
+                 "mttr_sum": 0.0, "mttr_n": 0, "approval_sum": 0.0, "approval_n": 0}
+        try:
+            import streamlit as st
+            runs = list(st.session_state.get("remediation_runs", []))
+        except Exception:
+            runs = []
+        for r in runs:  # live demo runs executed in this session
+            b["n"] += 1
+            b["remediated"] += int(r["status"] == "remediated")
+            if r.get("ticket_closed"):
+                b["closed"] += 1
+                b["closed_wo_reduction"] += int(not r["exposure_reduced"])
+            b["before"] += r["exposure_before"]
+            b["after"] += r["exposure_after"] if r.get("exposure_after") is not None else r["exposure_before"]
+            if r.get("exposure_reduced") and r.get("hours") is not None:
+                b["mttr_sum"] += r["hours"]
+                b["mttr_n"] += 1
+        pct = lambda a, n, default: round(a / n * 100.0, 1) if n else default
+        return {
+            "Verified Closure Rate": pct(b["remediated"], b["n"], 78.0),
+            "Closed Without Reduction": pct(b["closed_wo_reduction"], b["closed"], 12.0),
+            "Exposure Reduction": round((1 - b["after"] / b["before"]) * 100.0, 1) if b["before"] else 62.0,
+            "Remediation MTTR": round(b["mttr_sum"] / b["mttr_n"], 1) if b["mttr_n"] else 30.0,
+            "Approval Turnaround": round(b["approval_sum"] / b["approval_n"], 1) if b["approval_n"] else 5.0,
+        }
+
     def get_kpi(self, name: str) -> float:
-        """Retrieve computed KPI value."""
+        """Retrieve computed KPI value (remediation KPIs also reflect live demo runs)."""
+        if name in REMEDIATION_KPI_NAMES:
+            return self._remediation_kpis()[name]
+        if name == "Exposure Remediation Score":
+            return self.get_use_case_score("remediation")
         return self.kpis.get(name, 0.0)
 
     def get_ai_readiness_index(self) -> float:
@@ -151,5 +224,6 @@ class KPIEngine:
         scores = [
             self.get_use_case_score("ctem"),
             self.get_use_case_score("devsecops"),
+            self.get_use_case_score("remediation"),
         ]
         return round(sum(scores) / len(scores), 1)

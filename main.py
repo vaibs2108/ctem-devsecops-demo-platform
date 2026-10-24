@@ -60,10 +60,12 @@ def init_session_state():
         "datasets": None,
         "active_data_source_ctem": "synthetic",
         "active_data_source_devsecops": "synthetic",
+        "active_data_source_remediation": "synthetic",
 
         # Stage tracking
         "active_stage_ctem": 1,
         "active_stage_devsecops": 1,
+        "active_stage_remediation": 1,
 
         # Navigation
         "current_page": "home",
@@ -288,6 +290,7 @@ def _render_home(datasets, kpi_engine, agent_manager):
         "📊 Dashboard",
         "🎯 CTEM",
         "🐙 DevSecOps",
+        "🛠️ Exposure Remediation",
     ])
 
     with tabs[0]:
@@ -301,6 +304,10 @@ def _render_home(datasets, kpi_engine, agent_manager):
     with tabs[2]:
         from app.ui.pages.devsecops import render_devsecops_page
         render_devsecops_page(datasets, agent_manager, kpi_engine)
+
+    with tabs[3]:
+        from app.ui.pages.remediation import render_remediation_page
+        render_remediation_page(datasets, agent_manager, kpi_engine)
 
 
 # ── Main Entry Point ────────────────────────────────────────────────────────

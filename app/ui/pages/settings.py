@@ -1,6 +1,6 @@
 """
 AI Capability Demo — Settings Page
-Configure LLM pathways and the 12 MCP vendor credentials.
+Configure LLM pathways and the MCP vendor credentials.
 AGENTS.md Section 2 & 5.1
 """
 
@@ -151,15 +151,15 @@ def render_settings_page():
 
     # ── TAB 2: MCP Integrations ──────────────────────────────────────────────
     with tab_mcp:
-        st.subheader("12 Model Context Protocol (MCP) Endpoints")
-        st.write(
-            "The platform includes deep integrations with 10 enterprise security tools "
-            "plus Jira and ServiceNow ticketing platforms. If credential keys are missing, "
-            "it gracefully falls back to high-fidelity synthetic vendor response simulation."
-        )
-
         registry = MCPToolRegistry()
         client = MCPClient(registry)
+
+        st.subheader(f"{len(registry.tools)} Model Context Protocol (MCP) Endpoints")
+        st.write(
+            "The platform includes integrations with enterprise security, ticketing and "
+            "configuration-management tools. If credential keys are missing, "
+            "it gracefully falls back to high-fidelity synthetic vendor response simulation."
+        )
 
         # Categorize tools
         categories = {}

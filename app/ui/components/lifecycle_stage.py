@@ -695,6 +695,13 @@ def render_usecase_overview_card(use_case: str):
             "goal": "Shift security left into the developer workflow at machine speed. Automatically review every commit for SQL injection, hardcoded secrets, and vulnerable packages, explain the exploit chain in plain language, generate a fix and open a pull request, run automated security validation, and gate deployment behind a human approval — turning a multi-day security review cycle into minutes.",
             "frameworks": ["OWASP Top 10", "CWE Top 25", "NIST SSDF"],
             "color": "#00ff88"
+        },
+        "remediation": {
+            "title": "🛠️ AI-Led Exposure Remediation",
+            "subtitle": "Correlate · Prioritise · Plan · Approve · Verify · Prove Closure",
+            "goal": "Close the loop on a single exposure from raw scanner signal to verified reduction. AI correlates the vulnerability with identity, business service and threat context, explains why it matters here and not merely by CVSS, proposes the remediation path and a ready-to-approve change package; a human approves; the customer's own tooling executes; the agent rescans, proves closure with evidence, and the dashboard shows exposure reduced, not ticket closed.",
+            "frameworks": ["NIST SP 800-40", "CISA KEV", "EPSS", "ITIL 4 Change", "MITRE ATT&CK"],
+            "color": "#a855f7"
         }
     }
     

@@ -1,11 +1,13 @@
 # CTEM & DevSecOps AI Platform
 
-An AI capability demo built with Streamlit, showcasing two agentic security workflows powered by LangGraph:
+An AI capability demo built with Streamlit, showcasing three agentic security workflows powered by LangGraph:
 
 - **CTEM** — Continuous Threat Exposure Management across Scoping, Discovery, Prioritisation, Validation, and Mobilisation, including AI-generated attack-path and vulnerability-chaining analysis.
 - **DevSecOps** — a lean, linear AI pipeline: a commit is reviewed for SQL injection / hardcoded secrets / vulnerable packages, the exploit chain is explained, a fix is generated and opened as a PR, automated security validation runs, and a human approval gate unlocks deployment.
 
-Both use cases share an Executive Dashboard, an Agent Registry, a Copilot chat, synthetic data generation, token-usage tracking, and observability (audit log, LangSmith tracing).
+- **Exposure Remediation** — a closed loop for one exposure: scanner signal, AI correlation with identity, business service and threat context, an explanation of why it matters beyond CVSS, a remediation path and change package, a mandatory human approval, execution in a simulated customer environment, a verification rescan, hashed closure evidence and a dashboard update. Success means exposure reduced, not ticket closed. Three real-world scenarios (clean patch, compensating control under a change freeze, and a rescan that blocks closure) use real CVEs with optional live CISA KEV and FIRST EPSS enrichment.
+
+All use cases share an Executive Dashboard, an Agent Registry, a Copilot chat, synthetic data generation, token-usage tracking, and observability (audit log, LangSmith tracing).
 
 ## Running locally
 

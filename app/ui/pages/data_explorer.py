@@ -1,6 +1,6 @@
 """
 AI Capability Demo — Data Explorer Page
-Browse and analyze all 8 enterprise-grade security datasets.
+Browse and analyze all 12 enterprise-grade security datasets.
 AGENTS.md Section 4 & 5
 """
 
@@ -8,7 +8,7 @@ import streamlit as st
 import pandas as pd
 from app.ui.theme import (
     render_hero_banner, render_glass_card, render_badge,
-    ACCENT_BLUE, ACCENT_GREEN,
+    ACCENT_BLUE, ACCENT_GREEN, ACCENT_PURPLE,
 )
 from app.data.synthetic_banner import render_sidebar_data_badge
 
@@ -30,6 +30,15 @@ UC_INFO = {
             "code_review_findings": "🔍 AI Code Review Findings (250 findings)",
             "pull_requests": "🔀 Pull Requests (150 PRs)",
             "security_validation_results": "✅ Security Validation Results (300 checks)",
+        }
+    },
+    "Exposure Remediation": {
+        "accent": ACCENT_PURPLE,
+        "datasets": {
+            "exposure_signals": "📡 Exposure Signals (scanner findings with threat context)",
+            "service_identity_context": "🧩 Service & Identity Context (business service, owner, privileged identity)",
+            "change_records": "📝 Change Records (ITSM changes and approvals)",
+            "rescan_results": "🔁 Rescan Results (verified exposure before/after)",
         }
     }
 }

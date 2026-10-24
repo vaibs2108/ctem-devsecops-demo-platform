@@ -131,6 +131,7 @@ def render_token_usage_page(tracker: TokenUsageTracker):
         uc_labels = {
             "ctem": "🎯 CTEM Exposure Mgmt",
             "devsecops": "🐙 AI-Led DevSecOps",
+            "remediation": "🛠️ AI-Led Exposure Remediation",
             "general": "⚙️ System Copilots"
         }
         usecase_spend["Use Case"] = usecase_spend["use_case"].map(lambda x: uc_labels.get(x, x))

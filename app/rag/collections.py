@@ -1,5 +1,5 @@
 """
-FAISS Collections Definitions — All 17 collections for the AI Capability Demo.
+FAISS Collections Definitions — All collections for the AI Capability Demo.
 AGENTS.md Section 4 & 10.3.
 """
 from __future__ import annotations
@@ -17,6 +17,11 @@ FAISS_COLLECTIONS: Dict[str, Dict[str, Any]] = {
     "devsecops_findings": {"vector_size": 1536, "distance": "Cosine"},
     "devsecops_pull_requests": {"vector_size": 1536, "distance": "Cosine"},
     "devsecops_validations": {"vector_size": 1536, "distance": "Cosine"},
+    # Exposure Remediation
+    "remediation_signals": {"vector_size": 1536, "distance": "Cosine"},
+    "remediation_context": {"vector_size": 1536, "distance": "Cosine"},
+    "remediation_changes": {"vector_size": 1536, "distance": "Cosine"},
+    "remediation_rescans": {"vector_size": 1536, "distance": "Cosine"},
     # Custom User Uploads
     "custom_uploads": {"vector_size": 1536, "distance": "Cosine"},
     # Frameworks

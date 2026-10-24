@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional
 from app.ui.theme import (
     ACCENT_BLUE,
     ACCENT_GREEN,
+    ACCENT_PURPLE,
     ACCENT_RED,
     RAG_AMBER,
     RAG_GREEN,
@@ -80,7 +81,7 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
         <div style="text-align: center; margin-top: 10px; margin-bottom: 28px; font-family: 'Inter', sans-serif;">
             <div style="font-size: 0.8rem; font-weight: 700; color: {TEXT_SECONDARY}; text-transform: uppercase; letter-spacing: 0.18em;">CTEM &amp; DEVSECOPS AI PLATFORM</div>
             <h1 style="font-size: 2.3rem; font-weight: 800; color: white; margin-top: 6px; margin-bottom: 6px; background: linear-gradient(90deg, #00d4ff, #00ff88); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em;">Enterprise Security Command Center</h1>
-            <div style="font-size: 0.88rem; color: #a0a0c0; font-weight: 500;">AI-Led Continuous Threat Exposure Management &bull; AI-Led DevSecOps</div>
+            <div style="font-size: 0.88rem; color: #a0a0c0; font-weight: 500;">AI-Led Continuous Threat Exposure Management &bull; AI-Led DevSecOps &bull; AI-Led Exposure Remediation</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -89,13 +90,16 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
     # ── ROW 1: Two SVG Radial Gauges (Use Case Scores) ──
     ctem_score = kpi_engine.get_use_case_score("ctem")
     devsecops_score = kpi_engine.get_use_case_score("devsecops")
+    remediation_score = kpi_engine.get_use_case_score("remediation")
 
-    g_col1, g_col2 = st.columns(2)
+    g_col1, g_col2, g_col3 = st.columns(3)
 
     with g_col1:
         st.markdown(render_svg_gauge(ctem_score, "CTEM", "EXPOSURE MITIGATION", ACCENT_BLUE), unsafe_allow_html=True)
     with g_col2:
         st.markdown(render_svg_gauge(devsecops_score, "DEVSECOPS", "SECURE CODE VELOCITY", ACCENT_GREEN), unsafe_allow_html=True)
+    with g_col3:
+        st.markdown(render_svg_gauge(remediation_score, "REMEDIATION", "VERIFIED EXPOSURE REDUCTION", ACCENT_PURPLE), unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -136,7 +140,25 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
     dso_findings_color = RAG_GREEN if dso_findings <= 2.0 else (RAG_AMBER if dso_findings <= 3.5 else RAG_RED)
     dso_findings_sub = "LOW DEFECT INJECTION RATE" if dso_findings <= 2.0 else "ELEVATED DEFECT INJECTION"
 
-    kpi_col1, kpi_col2 = st.columns(2)
+    # 3. Exposure Remediation KPIs
+    rem_verified = kpi_engine.get_kpi("Verified Closure Rate")
+    rem_verified_color = RAG_GREEN if rem_verified >= 75 else RAG_AMBER
+    rem_verified_sub = "FIXES PROVEN BY RESCAN" if rem_verified >= 75 else "TOO MANY UNVERIFIED CLOSURES"
+
+    rem_reduction = kpi_engine.get_kpi("Exposure Reduction")
+    rem_reduction_color = RAG_GREEN if rem_reduction >= 70 else RAG_AMBER
+    rem_reduction_sub = "EXPOSURE MEASURABLY DOWN" if rem_reduction >= 70 else "EXPOSURE REDUCTION LAGGING"
+
+    rem_gap = kpi_engine.get_kpi("Closed Without Reduction")
+    rem_gap_color = RAG_GREEN if rem_gap <= 10 else (RAG_AMBER if rem_gap <= 20 else RAG_RED)
+    rem_gap_sub = "TICKETS MATCH REALITY" if rem_gap <= 10 else "TICKETS CLOSED, EXPOSURE REMAINS"
+
+    rem_mttr = kpi_engine.get_kpi("Remediation MTTR")
+    rem_mttr_pct = max(0.0, 100.0 - rem_mttr)
+    rem_mttr_color = RAG_GREEN if rem_mttr <= 24 else (RAG_AMBER if rem_mttr <= 48 else RAG_RED)
+    rem_mttr_sub = f"{rem_mttr:.1f} H SIGNAL TO VERIFIED RESULT"
+
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 
     with kpi_col1:
         st.markdown('<div style="font-size:0.75rem; font-weight:700; color:#a0a0c0; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🎯 CTEM</div>', unsafe_allow_html=True)
@@ -151,6 +173,13 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
         st.markdown(render_executive_kpi_card("DEPLOYMENT GATE PASS RATE", dso_gate, dso_gate_color, dso_gate_sub, dso_gate_color), unsafe_allow_html=True)
         st.markdown(render_executive_kpi_card("PR APPROVAL RATE", dso_pr, dso_pr_color, dso_pr_sub, dso_pr_color), unsafe_allow_html=True)
         st.markdown(render_executive_kpi_card("FINDINGS PER COMMIT (INV.)", max(0.0, 100.0 - dso_findings * 10), dso_findings_color, dso_findings_sub, dso_findings_color), unsafe_allow_html=True)
+
+    with kpi_col3:
+        st.markdown('<div style="font-size:0.75rem; font-weight:700; color:#a0a0c0; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🛠️ Exposure Remediation</div>', unsafe_allow_html=True)
+        st.markdown(render_executive_kpi_card("VERIFIED CLOSURE RATE", rem_verified, rem_verified_color, rem_verified_sub, rem_verified_color), unsafe_allow_html=True)
+        st.markdown(render_executive_kpi_card("EXPOSURE REDUCTION", rem_reduction, rem_reduction_color, rem_reduction_sub, rem_reduction_color), unsafe_allow_html=True)
+        st.markdown(render_executive_kpi_card("TICKETS CLOSED WITHOUT REDUCTION (INV.)", max(0.0, 100.0 - rem_gap), rem_gap_color, rem_gap_sub, rem_gap_color), unsafe_allow_html=True)
+        st.markdown(render_executive_kpi_card("SIGNAL-TO-VERIFIED SPEED", rem_mttr_pct, rem_mttr_color, rem_mttr_sub, rem_mttr_color), unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -210,6 +239,15 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
             subtext="Security validation checks passed before the human-approval gate"
         ), unsafe_allow_html=True)
 
+        # Exposure remediation: verified closure
+        st.markdown(render_kpi_progress_card(
+            label="Remediation Verified Closure Rate",
+            value=rem_verified,
+            max_value=100.0,
+            color=ACCENT_PURPLE,
+            subtext="Changes where the verification rescan proved the exposure is gone"
+        ), unsafe_allow_html=True)
+
     with col_ops:
         # Build beautifully formatted technical operations table
         categories = {
@@ -226,6 +264,13 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
                 ("Mean Time to Fix", "Avg minutes from finding to generated fix", " Min"),
                 ("PR Approval Rate", "% pull requests approved", "%"),
                 ("Deployment Gate Pass Rate", "% security validation checks passed", "%"),
+            ],
+            "AI-Led Exposure Remediation": [
+                ("Verified Closure Rate", "% changes proven by rescan", "%"),
+                ("Exposure Reduction", "% contextual exposure removed", "%"),
+                ("Closed Without Reduction", "% closed tickets with exposure still present", "%"),
+                ("Remediation MTTR", "Hours from signal to verified result", " h"),
+                ("Approval Turnaround", "Hours to a human decision", " h"),
             ],
         }
         
@@ -260,7 +305,8 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
                 status_color = "#00ff88"
                 status_text = "OPTIMAL"
                 
-                if kpi_key in ["P1 SLA Breach Rate", "MTTR", "MTTN", "Mean Time to Fix", "Findings per Commit"]:
+                if kpi_key in ["P1 SLA Breach Rate", "MTTR", "MTTN", "Mean Time to Fix", "Findings per Commit",
+                               "Closed Without Reduction", "Remediation MTTR", "Approval Turnaround"]:
                     # Lower is better
                     lower_is_better_limits = {
                         "P1 SLA Breach Rate": (10.0, 25.0),
@@ -268,6 +314,9 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
                         "MTTN": (2.0, 4.0),
                         "Mean Time to Fix": (10.0, 20.0),
                         "Findings per Commit": (2.0, 3.5),
+                        "Closed Without Reduction": (10.0, 20.0),
+                        "Remediation MTTR": (24.0, 48.0),
+                        "Approval Turnaround": (6.0, 12.0),
                     }
                     limit_optimal, limit_warning = lower_is_better_limits[kpi_key]
                     if val <= limit_optimal:
@@ -324,12 +373,14 @@ def render_executive_dashboard(datasets: Optional[Dict[str, pd.DataFrame]] = Non
         trend_data = {
             "exposure_management": [55.2, 60.5, 66.8, 71.2, ctem_score],
             "devsecops": [58.0, 64.4, 70.1, 76.8, devsecops_score],
+            "remediation": [49.5, 56.2, 63.0, 69.4, remediation_score],
         }
 
         # Format the dictionary key names nicely for display
         series_dict = {
             "CTEM Exposure": trend_data["exposure_management"],
             "DevSecOps Velocity": trend_data["devsecops"],
+            "Verified Remediation": trend_data["remediation"],
         }
         
         fig_trend = create_trend_chart(dates, series_dict, "")

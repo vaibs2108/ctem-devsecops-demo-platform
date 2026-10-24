@@ -29,6 +29,11 @@ class FAISSIndexManager:
         "devsecops_findings":      {"vector_size": 1536},
         "devsecops_pull_requests": {"vector_size": 1536},
         "devsecops_validations":   {"vector_size": 1536},
+        # Exposure Remediation
+        "remediation_signals":     {"vector_size": 1536},
+        "remediation_context":     {"vector_size": 1536},
+        "remediation_changes":     {"vector_size": 1536},
+        "remediation_rescans":     {"vector_size": 1536},
         # Custom User Uploads
         "custom_uploads":          {"vector_size": 1536},
         # Frameworks (shared)

@@ -1,6 +1,7 @@
 """
 SyntheticDataEngine — High-fidelity enterprise security synthetic data generator.
-Generates all 8 enterprise-grade datasets required for the CTEM and DevSecOps use cases.
+Generates the enterprise-grade datasets required for the CTEM, DevSecOps and
+Exposure Remediation use cases (8 + 4 datasets).
 AGENTS.md Section 10.1 & 10.2.
 """
 from __future__ import annotations
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class SyntheticDataEngine:
-    """Generates all 8 enterprise-grade security datasets.
+    """Generates all 12 enterprise-grade security datasets.
     
     Includes realistic hostnames, CVE IDs, MITRE ATT&CK techniques, 
     and RAG/EPSS properties. Uses NumPy vectorisation for speed.
@@ -29,7 +30,7 @@ class SyntheticDataEngine:
 
     def generate_all(self) -> Dict[str, pd.DataFrame]:
         """Generate all 8 datasets and store them."""
-        logger.info("Generating all 8 enterprise security datasets...")
+        logger.info("Generating all 12 enterprise security datasets...")
 
         # 1. CTEM
         assets = self.generate_asset_inventory()
@@ -43,6 +44,12 @@ class SyntheticDataEngine:
         pull_requests = self.generate_pull_requests(review_findings)
         validation_results = self.generate_security_validation_results(pull_requests)
 
+        # 3. Exposure Remediation (own RNG: keeps the datasets above byte-stable)
+        exposure_signals = self.generate_exposure_signals()
+        service_context = self.generate_service_identity_context()
+        change_records = self.generate_change_records(exposure_signals)
+        rescan_results = self.generate_rescan_results(change_records, exposure_signals)
+
         self.datasets = {
             "asset_inventory": assets,
             "vulnerability_findings": findings,
@@ -52,8 +59,12 @@ class SyntheticDataEngine:
             "code_review_findings": review_findings,
             "pull_requests": pull_requests,
             "security_validation_results": validation_results,
+            "exposure_signals": exposure_signals,
+            "service_identity_context": service_context,
+            "change_records": change_records,
+            "rescan_results": rescan_results,
         }
-        logger.info("Successfully generated all 8 datasets.")
+        logger.info("Successfully generated all 12 datasets.")
         return self.datasets
 
     # ── 1. CTEM Datasets ─────────────────────────────────────────────────────
@@ -367,6 +378,157 @@ class SyntheticDataEngine:
                 "details": f"{check_name} completed — {'no issues found' if status == 'Passed' else 'regression detected, review required'}.",
             })
         return pd.DataFrame(data)
+
+    # ── 3. Exposure Remediation Datasets ──────────────────────────────────────
+    # Own default_rng: the global RNG state used by the datasets above is untouched.
+
+    # (cve, cvss, in KEV, component) - KEV flags verified against the CISA feed.
+    _REM_CVES = [
+        ("CVE-2021-44228", 10.0, True, "Apache Log4j2"),
+        ("CVE-2023-22515", 9.8, True, "Atlassian Confluence"),
+        ("CVE-2024-3400", 10.0, True, "PAN-OS GlobalProtect"),
+        ("CVE-2023-46604", 9.8, True, "Apache ActiveMQ"),
+        ("CVE-2023-44487", 7.5, True, "HTTP/2 stack"),
+        ("CVE-2022-0847", 7.8, True, "Linux kernel"),
+        ("CVE-2021-3156", 7.8, True, "sudo"),
+        ("CVE-2024-3094", 10.0, False, "xz-utils"),
+        ("CVE-2023-38545", 9.8, False, "curl"),
+        ("CVE-2024-6387", 8.1, False, "OpenSSH"),
+        ("CVE-2024-21626", 8.6, False, "runc"),
+        ("CVE-2023-22809", 7.8, False, "sudo"),
+    ]
+    _REM_SERVICES = [
+        ("Customer Portal", "Tier 1", "PCI DSS 4.0; GDPR", "Restricted", "Digital Channels", "digital-oncall", "Session store and customer PII", "Web tier to customer database"),
+        ("Order Management", "Tier 1", "SOX", "Confidential", "Commerce Platform", "commerce-oncall", "App service account with write access to orders", "Orders DB, fulfilment queue"),
+        ("Identity Provider", "Tier 1", "ISO 27001; SOX", "Restricted", "Identity Engineering", "iam-oncall", "Directory admin integration", "All SSO-integrated applications"),
+        ("Data Warehouse", "Tier 2", "GDPR", "Confidential", "Analytics Platform", "data-oncall", "Warehouse loader role", "Reporting layer, ML feature store"),
+        ("HR Self-Service", "Tier 2", "GDPR", "Confidential", "Corporate IT", "corpit-oncall", "HRIS integration token", "Payroll export, employee records"),
+        ("CI/CD Platform", "Tier 2", "ISO 27001", "Internal", "Developer Platform", "devplat-oncall", "Deploy keys and registry credentials", "Production deploy pipeline"),
+        ("Partner API Gateway", "Tier 1", "PCI DSS 4.0", "Restricted", "Integration Services", "integration-oncall", "Partner OAuth client secrets", "Partner-facing APIs"),
+        ("Internal Wiki", "Tier 3", "ISO 27001", "Internal", "Corporate IT", "corpit-oncall", "Space admin accounts", "Internal documentation"),
+        ("Observability Stack", "Tier 3", "ISO 27001", "Internal", "SRE", "sre-oncall", "Read access to application logs", "Log archive"),
+        ("File Transfer Service", "Tier 2", "SOX; GDPR", "Confidential", "Integration Services", "integration-oncall", "SFTP service accounts", "Finance batch exports"),
+        ("Build Farm", "Tier 3", "ISO 27001", "Internal", "Developer Platform", "devplat-oncall", "Ephemeral runner tokens", "Artifact registry"),
+        ("Payments Settlement", "Tier 1", "PCI DSS 4.0; SOX", "Restricted", "Payments Engineering", "payments-oncall", "KMS decrypt role", "Settlement bucket, token vault"),
+    ]
+    _REM_OWNER_ROLES = ["Security Lead + Service Owner", "Head of Network Security + CAB chair", "Security Lead + Engineering Manager", "CAB chair"]
+
+    def _rem_rng(self, offset: int) -> np.random.Generator:
+        return np.random.default_rng((self.seed if self.seed is not None else 42) * 1000 + offset)
+
+    def generate_exposure_signals(self, count: int = 72) -> pd.DataFrame:
+        from app.exposure_remediation.scenarios import build_priority_block, get_scenarios, priority_label
+
+        rng = self._rem_rng(1)
+        now = datetime.now(timezone.utc)
+        rows: List[dict] = []
+
+        # The three curated scenarios sit on top as open, awaiting-remediation signals.
+        for scenario in get_scenarios(now).values():
+            sig, asset, svc = scenario["signal"], scenario["asset"], scenario["service"]
+            pr = build_priority_block(scenario)
+            rows.append({
+                "signal_id": sig["signal_id"], "source": sig["source"], "asset_id": asset["asset_id"], "hostname": asset["hostname"],
+                "cve_id": sig["cve"], "cvss_score": sig["cvss"], "cisa_kev": True, "epss_score": scenario["threat"]["epss"],
+                "exploit_maturity": scenario["threat"]["exploit_maturity"], "internet_exposed": asset["internet_exposed"],
+                "service_name": svc["name"], "service_tier": svc["tier"], "detected_at": sig["detected_at"],
+                "contextual_score": pr["contextual_score"], "priority": pr["priority_label"][:2], "status": "Awaiting Remediation",
+            })
+
+        sources = ["Vulnerability scanner (authenticated)", "Package inventory agent", "Cloud posture scanner", "Container image scanner"]
+        maturities = ["Weaponised - active exploitation", "Public PoC available", "Proof of concept only", "No known exploit"]
+        for i in range(count):
+            cve, cvss, kev, comp = self._REM_CVES[int(rng.integers(len(self._REM_CVES)))]
+            svc = self._REM_SERVICES[int(rng.integers(len(self._REM_SERVICES)))]
+            exposed = bool(rng.random() < 0.5)
+            epss = float(rng.uniform(0.70, 0.9999)) if kev else float(min(0.6, rng.beta(1, 9)))
+            tier_bonus = {"Tier 1": 6, "Tier 2": 3, "Tier 3": 1}[svc[1]]
+            controls = int(rng.choice([0, 6, 12], p=[0.5, 0.3, 0.2]))
+            score = int(max(0, min(100, round(cvss * 5) + (18 if kev else 0) + (14 if exposed else 0) + tier_bonus + round(epss * 5) - controls)))
+            detected = now - timedelta(hours=float(rng.uniform(12, 24 * 90)))
+            maturity = maturities[0] if kev else maturities[int(rng.integers(1, 4))]
+            status = str(rng.choice(["Remediated", "Mitigated", "Closure Blocked", "In Progress"], p=[0.62, 0.15, 0.08, 0.15]))
+            rows.append({
+                "signal_id": f"EXP-{detected:%y%m%d}-{1000 + i:04d}", "source": sources[int(rng.integers(len(sources)))],
+                "asset_id": f"AST-{int(rng.integers(1000, 1500))}", "hostname": f"{rng.choice(['web', 'app', 'api', 'db'])}-{rng.choice(['prod', 'prd'])}-{int(rng.integers(1, 40)):02d}",
+                "cve_id": cve, "cvss_score": cvss, "cisa_kev": kev, "epss_score": round(epss, 4), "exploit_maturity": maturity,
+                "internet_exposed": exposed, "service_name": svc[0], "service_tier": svc[1],
+                "detected_at": detected.strftime("%Y-%m-%dT%H:%M:%SZ"), "contextual_score": score,
+                "priority": priority_label(score)[:2], "status": status,
+            })
+        return pd.DataFrame(rows)
+
+    def generate_service_identity_context(self) -> pd.DataFrame:
+        from app.exposure_remediation.scenarios import get_scenarios
+
+        rows: List[dict] = []
+        for scenario in get_scenarios().values():
+            svc, ident = scenario["service"], scenario["identity"]
+            rows.append({
+                "service_id": svc["service_id"], "service_name": svc["name"], "tier": svc["tier"],
+                "regulatory_scope": "; ".join(svc["regulatory_scope"]), "data_classification": svc["data_classification"],
+                "owner_team": svc["owner"], "on_call": svc["on_call"], "rto_hours": svc["rto_hours"],
+                "privileged_identity": ident["account"], "credential_exposure": ident["credential_exposure"],
+                "blast_radius": "; ".join(scenario["blast_radius"]),
+            })
+        for i, s in enumerate(self._REM_SERVICES):
+            rows.append({
+                "service_id": f"SVC-{100 + i:03d}", "service_name": s[0], "tier": s[1], "regulatory_scope": s[2],
+                "data_classification": s[3], "owner_team": s[4], "on_call": s[5], "rto_hours": {"Tier 1": 1, "Tier 2": 8, "Tier 3": 24}[s[1]],
+                "privileged_identity": s[6], "credential_exposure": "Credentials held in application configuration or secret store",
+                "blast_radius": s[7],
+            })
+        return pd.DataFrame(rows)
+
+    def generate_change_records(self, signals_df: pd.DataFrame) -> pd.DataFrame:
+        rng = self._rem_rng(2)
+        rows: List[dict] = []
+        worked = signals_df[signals_df["status"].isin(["Remediated", "Mitigated", "Closure Blocked"])]
+        for n, (_, sig) in enumerate(worked.iterrows()):
+            detected = datetime.strptime(sig["detected_at"], "%Y-%m-%dT%H:%M:%SZ")
+            mitigated = sig["status"] == "Mitigated"
+            rem_type = "compensating_control" if mitigated else str(rng.choice(["patch", "patch", "config", "upgrade"]))
+            change_type = "Emergency" if sig["priority"] == "P1" and not mitigated else ("Normal (expedited CAB)" if mitigated else str(rng.choice(["Normal", "Standard"], p=[0.6, 0.4])))
+            approval_h = float(max(0.4, rng.lognormal(1.4, 0.55)))
+            approved = detected + timedelta(hours=float(rng.uniform(1, 6)) + approval_h)
+            implemented = approved + timedelta(hours=float(rng.uniform(1, 18 if not mitigated else 5)))
+            closed = implemented + timedelta(hours=float(rng.uniform(0.5, 4)))
+            rows.append({
+                "change_id": f"CHG{40000 + n:07d}", "signal_id": sig["signal_id"], "remediation_type": rem_type, "change_type": change_type,
+                "risk_level": str(rng.choice(["Low", "Low-Medium", "Medium"], p=[0.45, 0.35, 0.2])),
+                "approver_role": str(rng.choice(self._REM_OWNER_ROLES)), "approval_status": "Approved",
+                "approval_hours": round(approval_h, 1), "approved_at": approved.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "implemented_at": implemented.strftime("%Y-%m-%dT%H:%M:%SZ"), "closed_at": closed.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "ticket_state": "Closed - Residual Risk" if mitigated else "Closed - Successful",
+            })
+        return pd.DataFrame(rows)
+
+    def generate_rescan_results(self, changes_df: pd.DataFrame, signals_df: pd.DataFrame) -> pd.DataFrame:
+        rng = self._rem_rng(3)
+        status_by_signal = dict(zip(signals_df["signal_id"], signals_df["status"]))
+        score_by_signal = dict(zip(signals_df["signal_id"], signals_df["contextual_score"]))
+        rows: List[dict] = []
+        for n, (_, chg) in enumerate(changes_df.iterrows()):
+            status = status_by_signal[chg["signal_id"]]
+            before = int(score_by_signal[chg["signal_id"]])
+            if status == "Mitigated":
+                result, after = "Mitigated", round(before * 0.30)
+            elif status == "Closure Blocked":
+                result, after = "Still Vulnerable", before
+            else:
+                result, after = "Remediated", max(2, round(before * 0.04))
+            implemented = datetime.strptime(chg["implemented_at"], "%Y-%m-%dT%H:%M:%SZ")
+            rescan_at = implemented + timedelta(hours=float(rng.uniform(0.5, 3)))
+            rows.append({
+                "rescan_id": f"RSC-{7000 + n}", "signal_id": chg["signal_id"], "change_id": chg["change_id"],
+                "rescan_at": rescan_at.strftime("%Y-%m-%dT%H:%M:%SZ"), "result": result,
+                "exposure_before": before, "exposure_after": int(after),
+                "ticket_closed": bool(rng.random() < 0.97),
+                "exposure_reduced": result != "Still Vulnerable",
+                "method": "Authenticated rescan" if result != "Mitigated" else "Detection probe + config verification",
+                "evidence_ref": f"EVD-{9000 + n}",
+            })
+        return pd.DataFrame(rows)
 
 
 # Backwards compatibility stub for typo in Prompt

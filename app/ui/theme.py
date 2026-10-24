@@ -38,16 +38,19 @@ RAG_RED = "#ff4444"
 USE_CASE_COLOURS = {
     "ctem": ACCENT_BLUE,
     "devsecops": ACCENT_GREEN,
+    "remediation": ACCENT_PURPLE,
 }
 
 USE_CASE_LABELS = {
     "ctem": "🎯 CTEM",
     "devsecops": "🐙 DevSecOps",
+    "remediation": "🛠️ Exposure Remediation",
 }
 
 USE_CASE_ICONS = {
     "ctem": "🎯",
     "devsecops": "🐙",
+    "remediation": "🛠️",
 }
 
 # ── Light / Dark Theme Toggle ────────────────────────────────────────────────

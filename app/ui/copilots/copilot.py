@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Tuple
 
@@ -52,7 +53,7 @@ def get_or_init_rag_components() -> Tuple[FAISSIndexManager, RAGIngestor, RAGRet
 
 
 def ensure_datasets_indexed(datasets: Dict[str, pd.DataFrame], ingestor: RAGIngestor) -> None:
-    """Index high-value representative rows of CTEM and DevSecOps datasets into FAISS."""
+    """Index high-value representative rows of the CTEM, DevSecOps and Exposure Remediation datasets into FAISS."""
     if st.session_state.get("copilot_datasets_indexed", False) or not datasets:
         return
 
@@ -66,6 +67,10 @@ def ensure_datasets_indexed(datasets: Dict[str, pd.DataFrame], ingestor: RAGInge
         ("code_review_findings", "devsecops_findings", "devsecops", 80),
         ("pull_requests", "devsecops_pull_requests", "devsecops", 40),
         ("security_validation_results", "devsecops_validations", "devsecops", 40),
+        ("exposure_signals", "remediation_signals", "remediation", 75),
+        ("service_identity_context", "remediation_context", "remediation", 15),
+        ("change_records", "remediation_changes", "remediation", 61),
+        ("rescan_results", "remediation_rescans", "remediation", 61),
     ]
 
     for df_key, col_name, use_case, sample_n in mapping:
@@ -149,6 +154,72 @@ def ingest_uploaded_file(uploaded_file: Any, ingestor: RAGIngestor) -> Dict[str,
         return {"status": "error", "message": str(exc)}
 
 
+_REMEDIATION_KEYWORDS = (
+    "exposure", "remediat", "change", "chg", "rescan", "closure", "approval", "approve", "ticket", "mttr",
+    "residual", "mitigat", "verified", "signal", "waiting", "awaiting", "reduced",
+)
+
+
+def _remediation_context(query: str, datasets: dict) -> Tuple[List[str], List[str]]:
+    """Ground answers about the Exposure Remediation use case in the datasets and this session's live runs."""
+    q = query.lower()
+    ids = re.findall(r"CVE-\d{4}-\d{4,7}|CHG\d+|EXP-[\w-]+|EVD-\d+|RSC-\d+|[a-z]+-[a-z]+(?:-[a-z]+)?-\d+", query, flags=re.IGNORECASE)
+    if not (any(k in q for k in _REMEDIATION_KEYWORDS) or any(i.upper().startswith(("CHG", "EXP-", "EVD", "RSC")) for i in ids)):
+        return [], []
+
+    blocks: List[str] = []
+    citations: List[str] = []
+
+    runs = st.session_state.get("remediation_runs", [])
+    if runs:
+        run_df = pd.DataFrame(runs)[["signal_id", "cve", "host", "change_id", "verdict", "exposure_before", "exposure_after", "ticket_closed", "exposure_reduced", "approver"]]
+        blocks.append("Remediation runs executed in this session (live, most recent last):\n" + run_df.to_string(index=False))
+        citations.append(f"🛠️ Live Remediation Runs: {len(runs)} run(s) in this session.")
+
+    def pick(df: pd.DataFrame) -> pd.DataFrame:
+        if not ids:
+            return df.head(0)
+        mask = pd.Series(False, index=df.index)
+        text = df.astype(str)
+        for token in ids:
+            mask |= text.apply(lambda col: col.str.contains(token, case=False, regex=False)).any(axis=1)
+        return df[mask]
+
+    signals = datasets.get("exposure_signals")
+    changes = datasets.get("change_records")
+    rescans = datasets.get("rescan_results")
+
+    if signals is not None and not signals.empty:
+        hit = pick(signals)
+        if not hit.empty:
+            blocks.append("Matching exposure signals:\n" + hit.head(4).to_string(index=False))
+            citations.append(f"📡 Exposure Signals: {len(hit)} matching record(s).")
+        status_counts = signals["status"].value_counts().to_dict()
+        awaiting = signals[signals["status"] == "Awaiting Remediation"][["signal_id", "cve_id", "hostname", "service_name", "contextual_score", "priority"]]
+        blocks.append(f"Exposure signal status counts: {status_counts}")
+        if not awaiting.empty:
+            blocks.append("Signals awaiting remediation and human approval:\n" + awaiting.to_string(index=False))
+            citations.append("📡 Exposure Signals: items awaiting remediation.")
+    if changes is not None and not changes.empty:
+        hit = pick(changes)
+        if not hit.empty:
+            blocks.append("Matching change records:\n" + hit.head(4).to_string(index=False))
+            citations.append(f"📝 Change Records: {len(hit)} matching record(s).")
+        blocks.append(f"Change records: {len(changes)} total; mean approval turnaround {changes['approval_hours'].mean():.1f} h; types {changes['remediation_type'].value_counts().to_dict()}.")
+    if rescans is not None and not rescans.empty:
+        hit = pick(rescans)
+        if not hit.empty:
+            blocks.append("Matching rescan results:\n" + hit.head(4).to_string(index=False))
+            citations.append(f"🔁 Rescan Results: {len(hit)} matching record(s).")
+        closed = rescans[rescans["ticket_closed"]]
+        blocks.append(
+            f"Rescan outcomes: {rescans['result'].value_counts().to_dict()}. Tickets closed: {len(closed)}; "
+            f"closed WITHOUT exposure reduction: {int((~closed['exposure_reduced']).sum())}. "
+            f"Total exposure {int(rescans['exposure_before'].sum())} -> {int(rescans['exposure_after'].sum())}."
+        )
+    return blocks, citations
+
+
 def search_hybrid_rag(query: str, datasets: dict, retriever: RAGRetriever) -> Tuple[str, List[str]]:
     """Execute hybrid retrieval across FAISS collections (CTEM, DevSecOps, Custom Uploads) and dataset frames."""
     citations: List[str] = []
@@ -161,6 +232,10 @@ def search_hybrid_rag(query: str, datasets: dict, retriever: RAGRetriever) -> Tu
         ("devsecops_findings", "🐙 [DevSecOps Code Findings]"),
         ("devsecops_commits", "💻 [DevSecOps Commits]"),
         ("devsecops_pull_requests", "🔀 [DevSecOps Pull Requests]"),
+        ("remediation_signals", "📡 [Remediation Exposure Signals]"),
+        ("remediation_context", "🧩 [Remediation Service & Identity Context]"),
+        ("remediation_changes", "📝 [Remediation Change Records]"),
+        ("remediation_rescans", "🔁 [Remediation Rescan Results]"),
         ("custom_uploads", "📁 [Custom Upload Context]"),
     ]
 
@@ -173,7 +248,8 @@ def search_hybrid_rag(query: str, datasets: dict, retriever: RAGRetriever) -> Tu
                 meta = res.get("metadata", {})
                 
                 # Format a readable citation
-                ref_id = meta.get("cve_id") or meta.get("asset_id") or meta.get("finding_id") or meta.get("filename") or f"id-{res.get('id', '')}"
+                ref_id = (meta.get("change_id") or meta.get("cve_id") or meta.get("signal_id") or meta.get("service_id")
+                          or meta.get("asset_id") or meta.get("finding_id") or meta.get("filename") or f"id-{res.get('id', '')}")
                 citation_str = f"{label} Reference `{ref_id}` (RRF Score: {score:.3f})"
                 citations.append(citation_str)
                 context_blocks.append(f"Source: {label}\n{text_snippet}")
@@ -213,12 +289,23 @@ def search_hybrid_rag(query: str, datasets: dict, retriever: RAGRetriever) -> Tu
                 if not any("Code Findings" in c for c in citations):
                     citations.append(f"🐙 Direct Code Findings: found {len(matches)} matching DevSecOps issues.")
 
+    # Exposure Remediation (datasets + live runs from this session)
+    rem_blocks, rem_citations = _remediation_context(query, datasets)
+    context_blocks.extend(rem_blocks)
+    citations.extend(rem_citations)
+
     # If empty, provide general security posture summary snippet
     if not context_blocks:
         df_assets = datasets.get("asset_inventory")
         df_vulns = datasets.get("vulnerability_findings")
         df_reviews = datasets.get("code_review_findings")
-        summary_text = f"Platform Posture Summary:\n- Assets Scoped: {len(df_assets) if df_assets is not None else 0}\n- Active Vulnerabilities: {len(df_vulns) if df_vulns is not None else 0}\n- DevSecOps Code Issues: {len(df_reviews) if df_reviews is not None else 0}"
+        df_signals = datasets.get("exposure_signals")
+        summary_text = (
+            f"Platform Posture Summary:\n- Assets Scoped: {len(df_assets) if df_assets is not None else 0}"
+            f"\n- Active Vulnerabilities: {len(df_vulns) if df_vulns is not None else 0}"
+            f"\n- DevSecOps Code Issues: {len(df_reviews) if df_reviews is not None else 0}"
+            f"\n- Exposure Remediation Signals: {len(df_signals) if df_signals is not None else 0}"
+        )
         context_blocks.append(summary_text)
 
     combined_context = "\n\n---\n\n".join(context_blocks)
@@ -237,7 +324,7 @@ def render_copilot(datasets: Dict[str, pd.DataFrame], llm_router: Any, kpi_engin
     st.markdown(
         render_hero_banner(
             "Security Analyst Copilot",
-            "AI-powered hybrid RAG assistant with FAISS vector retrieval across CTEM exposure data, DevSecOps code pipelines, and live uploaded files."
+            "AI-powered hybrid RAG assistant with FAISS vector retrieval across CTEM exposure data, DevSecOps code pipelines, exposure remediation changes, and live uploaded files."
         ),
         unsafe_allow_html=True
     )
@@ -248,8 +335,8 @@ def render_copilot(datasets: Dict[str, pd.DataFrame], llm_router: Any, kpi_engin
         <div class="glass-card" style="padding: 24px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <div style="text-align: center; flex: 1;">
                 <div style="width: 48px; height: 48px; background: rgba(0, 212, 255, 0.12); border-radius: 12px; display: flex; justify-content: center; align-items: center; margin: 0 auto 10px auto; font-size: 24px;">📊</div>
-                <div style="color: #00d4ff; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 2px;">CTEM &amp; DEVSECOPS</div>
-                <div style="color: #8c8cab; font-size: 11px;">8 Domain Datasets</div>
+                <div style="color: #00d4ff; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 2px;">CTEM, DEVSECOPS &amp; REMEDIATION</div>
+                <div style="color: #8c8cab; font-size: 11px;">12 Domain Datasets</div>
             </div>
             <div style="color: #64748b; font-size: 18px;">→</div>
             
@@ -356,16 +443,22 @@ def render_copilot(datasets: Dict[str, pd.DataFrame], llm_router: Any, kpi_engin
             clicked_query = "Which internet-exposed assets have critical KEV vulnerabilities?"
         if st.button("🐙 Show SQL injection and hardcoded secret findings", use_container_width=True):
             clicked_query = "Show SQL injection and hardcoded secret findings in recent commits"
+        if st.button("🛠️ Which exposures are awaiting remediation and approval?", use_container_width=True):
+            clicked_query = "Which exposure signals are awaiting remediation and human approval, and why are they ranked that way?"
     with col_b:
         if st.button("🎯 Which vulnerabilities should be prioritized by EPSS?", use_container_width=True):
             clicked_query = "Which vulnerabilities should be prioritized by EPSS score?"
         if st.button("🔀 Which pull requests are blocked on security gates?", use_container_width=True):
             clicked_query = "Which pull requests are currently blocked on failed security validation?"
+        if st.button("🔁 How many tickets closed without reducing exposure?", use_container_width=True):
+            clicked_query = "How many remediation tickets were closed without the exposure actually being reduced, according to the rescan results?"
     with col_c:
         if st.button("🧪 Show false positives isolated during CTEM validation", use_container_width=True):
             clicked_query = "Show false positive vulnerabilities isolated during CTEM exploit validation"
         if st.button("📁 Summarize risks from uploaded custom files", use_container_width=True):
             clicked_query = "Summarize findings and risks across all custom uploaded security documents"
+        if st.button("📝 Summarise the last remediation run and its closure evidence", use_container_width=True):
+            clicked_query = "Summarise the most recent exposure remediation run: the change, the approver, the rescan result and the exposure before and after"
 
     # Clear chat functionality
     if st.button("🧹 Clear Chat History", type="tertiary"):
@@ -401,7 +494,7 @@ def render_copilot(datasets: Dict[str, pd.DataFrame], llm_router: Any, kpi_engin
                         st.caption(cit)
 
     # Chat input
-    user_query = st.chat_input("Ask about CTEM exposures, DevSecOps code findings, PR checks, or uploaded documents...")
+    user_query = st.chat_input("Ask about CTEM exposures, DevSecOps code findings, remediation changes and rescans, or uploaded documents...")
     if clicked_query:
         user_query = clicked_query
 
@@ -449,9 +542,11 @@ def render_copilot(datasets: Dict[str, pd.DataFrame], llm_router: Any, kpi_engin
                 # 3. Formulate system and task prompts strictly for CTEM & DevSecOps
                 system_prompt = (
                     "You are 'Antigravity Security Copilot', an expert AI security analyst specializing in "
-                    "Continuous Threat Exposure Management (CTEM) and AI-Led DevSecOps pipelines.\n"
+                    "Continuous Threat Exposure Management (CTEM), AI-Led DevSecOps pipelines and closed-loop Exposure Remediation.\n"
                     "Your capabilities include: attack surface boundary mapping, risk prioritisation (CISA KEV, EPSS), "
                     "exploit reachability validation, pre-commit SAST code review, automated PR patch generation, "
+                    "remediation planning and change packages, human approval gates, verification rescans and closure evidence "
+                    "(exposure reduced is the success criterion, not ticket closed), "
                     "and custom uploaded security document synthesis.\n"
                     "Format findings cleanly using bullet points, technical citations, and code blocks where applicable.\n"
                     "Always explicitly ground your answer in the provided FAISS RAG Context and cite specific assets, CVEs, or file lines.\n\n"

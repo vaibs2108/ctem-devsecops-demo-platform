@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 STAGE_MAP: Dict[str, List[str]] = {
     "ctem": ["scoping", "discovery", "prioritisation", "validation", "mobilisation"],
     "devsecops": ["pipeline"],
+    "remediation": ["plan", "revalidate"],
 }
 
 AGENT_NAME_MAP: Dict[str, Dict[str, str]] = {
@@ -34,6 +35,10 @@ AGENT_NAME_MAP: Dict[str, Dict[str, str]] = {
     "devsecops": {
         "pipeline": "DevSecOpsPipelineAgent",
     },
+    "remediation": {
+        "plan": "ExposureRemediationPlanner",
+        "revalidate": "RevalidationAgent",
+    },
 }
 
 # ── Framework references per use case ────────────────────────────────────────
@@ -41,7 +46,10 @@ AGENT_NAME_MAP: Dict[str, Dict[str, str]] = {
 FRAMEWORK_REFS: Dict[str, str] = {
     "ctem": "NIST CSF 2.0, CISA KEV, CVSS v3.1, EPSS, CIS Benchmarks",
     "devsecops": "OWASP Top 10 2021, CWE Top 25, NIST SSDF",
+    "remediation": "NIST SP 800-40r4, CISA KEV / BOD 22-01, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
 }
+
+REMEDIATION_DATASETS = ("exposure_signals", "service_identity_context", "change_records", "rescan_results")
 
 
 # ── LangGraph state definition ───────────────────────────────────────────────
@@ -58,6 +66,7 @@ class AgentState(TypedDict):
     raw_response: str
     outcome: Dict[str, Any]
     error: Optional[str]
+    scenario: Optional[Dict[str, Any]]
 
 
 # ── AgentManager ─────────────────────────────────────────────────────────────
@@ -88,8 +97,11 @@ class AgentManager:
         stage: str,
         datasets: Dict[str, Any],
         data_source: str = "synthetic",
+        scenario: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Run the appropriate agent for the given use-case stage.
+
+        `scenario` (remediation only) is the ground-truth fact set the agent must reason over.
 
         Returns an AgentOutcome dict:
             {
@@ -133,6 +145,7 @@ class AgentManager:
             "raw_response": "",
             "outcome": {},
             "error": None,
+            "scenario": scenario,
         }
 
         try:
@@ -186,7 +199,14 @@ class AgentManager:
                     asset_df = datasets["asset_inventory"]
                 elif "datasets" in st.session_state and isinstance(st.session_state.datasets, dict) and "asset_inventory" in st.session_state.datasets:
                     asset_df = st.session_state.datasets["asset_inventory"]
-                    
+
+                if use_case == "remediation" and scenario:
+                    # Hostnames in the supplied ground truth are in scope by definition.
+                    import re
+                    scenario_hosts = set(re.findall(r"\b[a-zA-Z0-9]+-[a-zA-Z0-9]+-\d+\b", json.dumps(scenario, default=str)))
+                    base_hosts = asset_df["hostname"].tolist() if asset_df is not None and "hostname" in asset_df.columns else []
+                    asset_df = pd.DataFrame({"hostname": base_hosts + sorted(scenario_hosts)})
+
                 report = detector.run_all(combined_text, asset_df)
                 
                 if "hallucination_reports" not in st.session_state:
@@ -323,6 +343,8 @@ class AgentManager:
         """Pre-aggregate datasets using Pandas (zero LLM cost)."""
         aggregation = {}
         datasets = state["datasets"]
+        if state["use_case"] == "remediation":
+            datasets = {k: v for k, v in datasets.items() if k in REMEDIATION_DATASETS}
 
         for key, val in datasets.items():
             if isinstance(val, pd.DataFrame) and not val.empty:
@@ -350,7 +372,7 @@ class AgentManager:
 
         system_prompt = self._build_system_prompt(use_case, stage, data_source)
         task_prompt = self._build_task_prompt(
-            use_case, stage, aggregation, rag_context
+            use_case, stage, aggregation, rag_context, state.get("scenario")
         )
 
         return {"system_prompt": system_prompt, "task_prompt": task_prompt}
@@ -361,10 +383,11 @@ class AgentManager:
         task_prompt = state["task_prompt"]
         use_case = state["use_case"]
         stage = state["stage"]
+        scenario = state.get("scenario")
 
         if self.llm_router is None:
             # Fallback: generate a synthetic response for demo mode
-            raw = self._generate_synthetic_response(use_case, stage)
+            raw = self._generate_synthetic_response(use_case, stage, scenario)
             return {"raw_response": raw}
 
         try:
@@ -391,7 +414,7 @@ class AgentManager:
             return {"raw_response": raw}
         except Exception as exc:
             logger.error("LLM call failed for %s/%s, falling back to synthetic response: %s", use_case, stage, exc)
-            raw = self._generate_synthetic_response(use_case, stage)
+            raw = self._generate_synthetic_response(use_case, stage, scenario)
             return {"raw_response": raw}
 
     def _node_format_outcome(self, state: AgentState) -> Dict[str, Any]:
@@ -405,7 +428,7 @@ class AgentManager:
         data_source = state["data_source"]
         aggregation = state.get("aggregation", {})
 
-        outcome = self._format_outcome(raw, use_case, stage, data_source, aggregation)
+        outcome = self._format_outcome(raw, use_case, stage, data_source, aggregation, state.get("scenario"))
         return {"outcome": outcome}
 
     # ── Core Methods ─────────────────────────────────────────────────────
@@ -444,6 +467,7 @@ class AgentManager:
         uc_labels = {
             "ctem": "AI-Led Continuous Threat Exposure Management (CTEM)",
             "devsecops": "AI-Led DevSecOps",
+            "remediation": "AI-Led Closed-Loop Exposure Remediation",
         }
 
         # Attack-path / vulnerability-chaining schema addendum — CTEM Discovery & Prioritisation only.
@@ -454,6 +478,65 @@ class AgentManager:
 6. FRONTIER REASONING — {chain_label.upper()}: You MUST include an "attack_chains" array with AT LEAST ONE multi-hop {chain_label} demonstrating how individually-modest findings combine into a critical business outcome (e.g. initial foothold → lateral movement → high-value asset compromise, or two Medium findings chaining into a Critical path). Each step must name a real asset/technique/CVE from the dataset and a one-sentence reasoning note explaining WHY it connects to the next step — this is the reasoning trace, not just a list.
 
 Add to the JSON: "attack_chains": [{{"chain_id": "<id>", "severity": "<Critical|High|Medium>", "steps": [{{"asset": "<hostname/asset_id>", "technique_or_cve": "<CVE-ID or MITRE T-code>", "note": "<one-sentence reasoning for this hop>"}}]}}]"""
+
+        if use_case == "remediation" and stage == "plan":
+            return f"""You are {agent_name}, an orchestrated team of four exposure-remediation specialists working one exposure end to end: (1) ExposureCorrelationAgent, (2) PriorityExplainerAgent, (3) RemediationPlannerAgent, (4) ChangePackageAgent.
+
+{source_declaration}
+
+FRAMEWORKS: {frameworks}
+
+You receive GROUND TRUTH facts for one exposure (scanner signal, asset, business service, identity, threat context, a catalogue of remediation options, the executed task list, and the computed priority numbers). Your job is to REASON over them, not to invent facts. Never contradict or change a number, version, CVE, hostname, or window you were given. Everything you write must be specific to this asset and service.
+
+REQUIREMENTS:
+1. CORRELATION: write "correlation.insight" (2-3 sentences) connecting the vulnerability, the identity it exposes, the business service and the threat context into one risk story.
+2. PRIORITY: write "priority.rationale" explaining why this exposure matters HERE rather than merely by CVSS. Cite the computed contextual score/rank and at least one lower-ranked peer finding.
+3. OPTIONS: for EVERY option id in the catalogue give a one-sentence "ai_assessment" weighing risk reduction, change risk, downtime, and any blocker (freeze, policy).
+4. RECOMMENDATION: set "recommended_option" to the catalogue's recommended id and give "recommended_reason".
+5. CHANGE PACKAGE: write risk_assessment, evidence (3 items), mitigation_steps (one per executed task group, same order), rollback_plan, validation_criteria. Be concrete: versions, commands, window.
+6. HUMAN GATE: "human_approval_required" is always true.
+7. AI CONFIDENCE: integer 40-99, varied realistically.
+
+RESPONSE FORMAT (strict JSON, no other keys):
+{{
+    "ai_confidence": <int 40-99>,
+    "step_by_step_execution": ["<step 1>", "<step 2>"],
+    "summary": "<2-3 sentence executive summary>",
+    "correlation": {{"insight": "<risk story>"}},
+    "priority": {{"rationale": "<why this matters here, not merely CVSS>"}},
+    "remediation_options": [{{"id": "<option id>", "ai_assessment": "<one sentence>"}}],
+    "recommended_option": "<option id>",
+    "recommended_reason": "<one or two sentences>",
+    "change_package": {{"risk_assessment": "<text>", "evidence": ["<e1>", "<e2>", "<e3>"], "mitigation_steps": ["<s1>", "<s2>"], "rollback_plan": "<text>", "validation_criteria": ["<c1>", "<c2>"]}},
+    "human_approval_required": true,
+    "recommendations": ["<actionable recommendation>"]
+}}
+"""
+
+        if use_case == "remediation" and stage == "revalidate":
+            return f"""You are {agent_name}, the verification and closure agent of a closed-loop exposure-remediation pipeline.
+
+{source_declaration}
+
+FRAMEWORKS: {frameworks}
+
+You receive GROUND TRUTH: the original exposure, the approved change, and the verification rescan result produced by the scanner after the change was executed. The rescan result is authoritative. Do not claim the exposure is fixed unless the rescan status says so. Never alter numbers, versions, ids or timestamps.
+
+REQUIREMENTS:
+1. State plainly whether exposure was REDUCED, REDUCED WITH RESIDUAL RISK, or NOT REDUCED, and why, citing rescan evidence.
+2. Distinguish "ticket closed" from "exposure reduced"; when they differ, say so explicitly.
+3. Name residual risk and concrete next actions with owners. Next actions must be NEW steps; never repeat work the executed change already did.
+4. AI CONFIDENCE: integer 40-99.
+
+RESPONSE FORMAT (strict JSON, no other keys):
+{{
+    "ai_confidence": <int 40-99>,
+    "summary": "<one sentence verdict>",
+    "closure_evidence": {{"narrative": "<3-4 sentences citing the rescan evidence and the before/after exposure>"}},
+    "residual_risk": "<text>",
+    "next_actions": ["<action 1>", "<action 2>"]
+}}
+"""
 
         if use_case == "devsecops":
             return f"""You are {agent_name}, a senior AI DevSecOps agent embedded directly in the CI pipeline.
@@ -524,8 +607,12 @@ RESPONSE FORMAT (strict JSON):
         stage: str,
         aggregation_summary: Dict[str, Any],
         context: str = "",
+        scenario: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Build the task instruction with aggregation data and RAG context."""
+        if use_case == "remediation" and scenario:
+            return self._build_remediation_task_prompt(stage, aggregation_summary, scenario)
+
         agg_text = json.dumps(aggregation_summary, indent=2, default=str)
         if len(agg_text) > 8000:
             agg_text = agg_text[:8000] + "\n... [truncated for token budget]"
@@ -545,6 +632,37 @@ DATASET AGGREGATION SUMMARY:
 {rag_section}
 
 Analyse the full dataset aggregation above. Produce your structured JSON response now.
+"""
+
+    def _build_remediation_task_prompt(
+        self, stage: str, aggregation: Dict[str, Any], scenario: Dict[str, Any]
+    ) -> str:
+        from app.exposure_remediation.scenarios import build_priority_block, scenario_for_prompt
+
+        truth = scenario_for_prompt(scenario)
+        truth["execution_plan"] = [t["name"] for t in scenario.get("sim", {}).get("tasks", [])]
+        for key in ("revalidation_facts",):
+            if key in scenario:
+                truth[key] = scenario[key]
+        if stage == "plan":
+            pr = build_priority_block(scenario)
+            truth["computed_priority"] = {k: pr[k] for k in ("cvss", "cvss_rank", "contextual_score", "contextual_rank", "priority_label", "sla_hours", "total")}
+            truth["peer_findings"] = [{"cve": r["cve"], "asset": r["asset"], "cvss": r["cvss"], "contextual": r["contextual"], "label": r["label"]} for r in pr["ranked"] if not r["self"]]
+        agg_text = json.dumps(aggregation, indent=1, default=str)
+        if len(agg_text) > 3500:
+            agg_text = agg_text[:3500] + "\n... [truncated for token budget]"
+        truth_text = json.dumps(truth, indent=1, default=str)
+        return f"""TASK: Execute the {stage.title()} stage of EXPOSURE REMEDIATION.
+
+{self._get_stage_instructions('remediation', stage)}
+
+GROUND TRUTH (authoritative, do not contradict):
+{truth_text}
+
+PORTFOLIO CONTEXT (historical remediation datasets, aggregated):
+{agg_text}
+
+Produce your structured JSON response now.
 """
 
     def _pre_aggregate(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -623,6 +741,7 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
         stage: str,
         data_source: str,
         aggregation: Dict[str, Any] = None,
+        scenario: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Validate and format raw LLM response into AgentOutcome."""
         agent_name = self._get_stage_agent_name(use_case, stage)
@@ -661,6 +780,10 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
                 confidence = 65
         confidence = max(40, min(99, confidence))
 
+        if use_case == "remediation" and scenario:
+            parsed = self._complete_remediation(parsed, stage, scenario)
+            confidence = max(40, min(99, int(parsed.get("ai_confidence", confidence))))
+
         return {
             "agent_name": agent_name,
             "use_case": use_case,
@@ -681,9 +804,89 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
             "validation": parsed.get("validation", {}),
             "human_approval_required": parsed.get("human_approval_required", False),
             "deployment": parsed.get("deployment", {}),
+            "correlation": parsed.get("correlation", {}),
+            "priority": parsed.get("priority", {}),
+            "remediation_options": parsed.get("remediation_options", []),
+            "recommended_option": parsed.get("recommended_option", ""),
+            "recommended_reason": parsed.get("recommended_reason", ""),
+            "change_package": parsed.get("change_package", {}),
+            "closure_evidence": parsed.get("closure_evidence", {}),
+            "verdict": parsed.get("verdict", ""),
+            "loop_outcome": parsed.get("outcome", ""),
+            "residual_risk": parsed.get("residual_risk", ""),
+            "next_actions": parsed.get("next_actions", []),
+            "narrative_source": parsed.get("narrative_source", ""),
             "timestamp": timestamp,
             "aggregation": aggregation or {},
         }
+
+    def _complete_remediation(self, parsed: Dict[str, Any], stage: str, scenario: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge the model's narrative onto the deterministic ground truth.
+
+        Facts, numbers, versions and windows always come from the scenario; the model contributes
+        reasoning text. Any missing/malformed section falls back to the deterministic builder.
+        """
+        from app.exposure_remediation.scenarios import build_plan_payload, build_revalidate_payload
+
+        def text(value: Any, min_len: int = 30) -> Optional[str]:
+            return value.strip() if isinstance(value, str) and len(value.strip()) >= min_len else None
+
+        def str_list(value: Any, min_items: int) -> Optional[List[str]]:
+            if isinstance(value, list) and len(value) >= min_items and all(isinstance(v, str) and v.strip() for v in value):
+                return [v.strip() for v in value]
+            return None
+
+        llm = parsed if isinstance(parsed, dict) else {}
+        synthetic = bool(llm.get("_synthetic"))
+        accepted = 0
+
+        if stage == "plan":
+            merged = build_plan_payload(scenario)
+            corr = llm.get("correlation") if isinstance(llm.get("correlation"), dict) else {}
+            if text(corr.get("insight")):
+                merged["correlation"]["insight"] = text(corr["insight"]); accepted += 1
+            pri = llm.get("priority") if isinstance(llm.get("priority"), dict) else {}
+            if text(pri.get("rationale"), 60):
+                merged["priority"]["rationale"] = text(pri["rationale"], 60); accepted += 1
+                merged["findings"][0]["description"] = merged["priority"]["rationale"]
+            by_id = {o.get("id"): o for o in llm.get("remediation_options", []) if isinstance(o, dict)}
+            for opt in merged["remediation_options"]:
+                note = text(by_id.get(opt["id"], {}).get("ai_assessment"), 20)
+                if note:
+                    opt["ai_assessment"] = note; accepted += 1
+            if text(llm.get("recommended_reason"), 20):
+                merged["recommended_reason"] = text(llm["recommended_reason"], 20); accepted += 1
+            pkg = llm.get("change_package") if isinstance(llm.get("change_package"), dict) else {}
+            for key, minimum in (("risk_assessment", 30), ("rollback_plan", 20)):
+                if text(pkg.get(key), minimum):
+                    merged["change_package"][key] = text(pkg[key], minimum); accepted += 1
+            for key, minimum in (("evidence", 2), ("mitigation_steps", 2), ("validation_criteria", 1)):
+                items = str_list(pkg.get(key), minimum)
+                if items:
+                    merged["change_package"][key] = items; accepted += 1
+            if text(llm.get("summary"), 40):
+                merged["summary"] = text(llm["summary"], 40); accepted += 1
+            if str_list(llm.get("step_by_step_execution"), 2):
+                merged["step_by_step_execution"] = str_list(llm["step_by_step_execution"], 2)
+            if str_list(llm.get("recommendations"), 1):
+                merged["recommendations"] = str_list(llm["recommendations"], 1)
+        else:
+            merged = build_revalidate_payload(scenario, scenario["revalidation_facts"])
+            ce = llm.get("closure_evidence") if isinstance(llm.get("closure_evidence"), dict) else {}
+            if text(ce.get("narrative"), 60):
+                merged["closure_evidence"]["narrative"] = text(ce["narrative"], 60); accepted += 1
+                merged["findings"][0]["description"] = merged["closure_evidence"]["narrative"]
+            if text(llm.get("residual_risk"), 15):
+                merged["residual_risk"] = text(llm["residual_risk"], 15); accepted += 1
+            if str_list(llm.get("next_actions"), 1):
+                merged["next_actions"] = str_list(llm["next_actions"], 1); accepted += 1
+            if text(llm.get("summary"), 20):
+                merged["summary"] = text(llm["summary"], 20); accepted += 1
+
+        if isinstance(llm.get("ai_confidence"), (int, float)):
+            merged["ai_confidence"] = int(llm["ai_confidence"])
+        merged["narrative_source"] = "synthetic" if synthetic or accepted == 0 else "llm"
+        return merged
 
     # ── Stage-specific instruction text ──────────────────────────────────
 
@@ -744,6 +947,24 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
                     "specific to the actual commit content, not generic advice."
                 ),
             },
+            "remediation": {
+                "plan": (
+                    "Take the single exposure in the GROUND TRUTH from raw scanner signal to an approvable "
+                    "change package: (1) correlate the vulnerability with the identity it exposes, the business "
+                    "service it sits under, and the exploit/threat context; (2) explain why it ranks where it "
+                    "does against the peer findings, beyond CVSS; (3) assess every remediation option (patch, "
+                    "configuration, compensating control, exception) and name blockers such as change freezes "
+                    "or policy; (4) justify the recommended option and draft the change package with evidence, "
+                    "mitigation steps matching the execution plan, rollback and validation criteria. "
+                    "Execution happens only after a human approves."
+                ),
+                "revalidate": (
+                    "A change was approved and executed in the customer's own tooling, and the scanner has "
+                    "re-checked the asset. Using the rescan evidence in the GROUND TRUTH, decide and explain "
+                    "whether exposure actually fell, what residual risk remains, and what happens next. "
+                    "Exposure reduced is the success criterion, not ticket closed."
+                ),
+            },
         }
 
         return instructions.get(use_case, {}).get(
@@ -754,10 +975,19 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
     # ── Synthetic fallback response ──────────────────────────────────────
 
     def _generate_synthetic_response(
-        self, use_case: str, stage: str
+        self, use_case: str, stage: str, scenario: Optional[Dict[str, Any]] = None
     ) -> str:
         """Generate a synthetic demo response when no LLM router is available."""
         agent_name = self._get_stage_agent_name(use_case, stage)
+
+        if use_case == "remediation" and scenario:
+            from app.exposure_remediation.scenarios import build_plan_payload, build_revalidate_payload
+            payload = (
+                build_plan_payload(scenario) if stage == "plan"
+                else build_revalidate_payload(scenario, scenario["revalidation_facts"])
+            )
+            payload["_synthetic"] = True
+            return json.dumps(payload, default=str)
 
         # Pre-built finding templates per UC/stage
         findings_map: Dict[str, Dict[str, list]] = {

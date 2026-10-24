@@ -8,9 +8,9 @@
 
 **Name**: CTEM & DevSecOps AI Platform — Enterprise Security Showcase  
 **Version**: Demo Phase (Pre-production) — v5.0  
-**Purpose**: Demonstrate two frontier AI-led security capabilities to CXO and technical audiences. The platform functions simultaneously as a compelling executive demo and a credible enterprise production implementation blueprint.
+**Purpose**: Demonstrate three frontier AI-led security capabilities to CXO and technical audiences. The platform functions simultaneously as a compelling executive demo and a credible enterprise production implementation blueprint.
 
-## Two Core Capabilities
+## Three Core Capabilities
 
 ### 1. Continuous Threat Exposure Management (CTEM) — 5-Stage Lifecycle
 Demonstrates the complete Gartner CTEM cycle — not just static scanner findings:
@@ -30,6 +30,12 @@ Demonstrates autonomous, secure code delivery at machine speed with mandatory hu
 6. **Automated Security Validation**: CI gate runs automated SAST (Semgrep), Secret Detection (TruffleHog), and regression tests (PyTest).
 7. **Human Approval & Deployment**: Mandatory HITL gate routes Critical/High issues to the Security Lead for sign-off before unlocking production deployment.
 *Headline Outcome*: **🎯 Secure code at machine speed**.
+
+### 3. AI-Led Exposure Remediation — 10-Step Closed Loop
+Follows ONE exposure from raw scanner signal to verified reduction, with the customer's own tooling doing the work:
+1. **Exposure arrives** (scanner-shaped signal) → 2. **AI correlates** vulnerability + identity + business service + threat context (CISA KEV, EPSS) → 3. **AI explains priority** (why it matters here, not merely CVSS) → 4. **Agent identifies the remediation path** (patch / configuration / compensating control / exception) → 5. **AI generates the change package** (owner, risk, evidence, mitigation, rollback) → 6. **Human approval** (always required) → 7. **Native tooling executes** (simulated customer environment) → 8. **Agent rescans/revalidates** → 9. **Closure evidence** (hashed evidence bundle) → 10. **Dashboard updates**.
+Three curated real-world scenarios: clean patch (Confluence CVE-2023-22515), patch blocked by a change freeze so a compensating control is applied (PAN-OS CVE-2024-3400), and a rescan that still finds a nested vulnerable library so ticket closure is blocked and the loop re-opens (Log4Shell CVE-2021-44228).
+*Headline Outcome*: **🎯 Exposure reduced, not ticket closed**.
 
 ## Core Design Principles
 - **Data Flow Hierarchy**: MCP/API Live Tools (P1) → File Upload (P2) → Synthetic Data Engine (P3).
@@ -129,11 +135,12 @@ ai_capability_demo/
 │       ├── copilots/
 │       │   └── copilot.py               # Grounded RAG security assistant with memory
 │       ├── dashboards/
-│       │   └── executive.py             # Executive Command Center (CTEM & DevSecOps KPIs)
+│       │   └── executive.py             # Executive Command Center (CTEM, DevSecOps & Remediation KPIs)
 │       └── pages/
 │           ├── ctem.py                  # 5-stage CTEM lifecycle workspace
 │           ├── devsecops.py             # 7-step lean DevSecOps pipeline workspace
-│           ├── agents_repo.py           # 10-Agent Catalog with Live Sandbox Console
+│           ├── remediation.py           # 10-step closed-loop Exposure Remediation workspace
+│           ├── agents_repo.py           # 15-Agent Catalog with Live Sandbox Console
 │           ├── data_explorer.py         # Raw security dataset browser
 │           ├── settings.py              # LLM tier toggles & MCP tool credentials
 │           ├── token_usage.py           # Token Consumption & USD Budget Optimization
@@ -168,15 +175,17 @@ AI Readiness Index: XX.X%
 [Domain Score Bars]
   CTEM Exposure Shield      XX%  ██████░░
   DevSecOps Code Velocity   XX%  ███████░
+  Exposure Remediation      XX%  ███████░
 ─────────────────────────────────
 [Logout Button]
 ```
 
 ## 4.2 Home Page Horizontal Tabs
-The primary workspace renders three dedicated top-level tabs via `st.tabs()`:
-1. **📊 Dashboard**: Executive Command Center featuring dual radial gauges, segregated CTEM and DevSecOps KPI scorecards, and operational resilience indexes.
+The primary workspace renders four dedicated top-level tabs via `st.tabs()`:
+1. **📊 Dashboard**: Executive Command Center featuring three radial gauges, segregated CTEM, DevSecOps and Exposure Remediation KPI scorecards, and operational resilience indexes.
 2. **🎯 CTEM**: 5-stage Continuous Threat Exposure Management lifecycle.
 3. **🐙 DevSecOps**: 7-step linear secure coding pipeline ending in *"Secure code at machine speed"*.
+4. **🛠️ Exposure Remediation**: 10-step closed loop ending in *"Exposure reduced, not ticket closed"*.
 
 ---
 
@@ -261,11 +270,24 @@ The primary workspace renders three dedicated top-level tabs via `st.tabs()`:
   **🎯 Secure code at machine speed**  
   *Vulnerabilities caught, explained, fixed, validated, and deployed — with a human still in control of the final call.*
 
+## 5.3 AI-Led Exposure Remediation
+
+Single-exposure, closed-loop pipeline (`app/ui/pages/remediation.py`). Facts, numbers, versions and windows come from curated ground truth (`app/exposure_remediation/scenarios.py`); the model contributes reasoning text on top, and any missing or malformed section falls back to the deterministic builder, so the demo always renders a complete run.
+
+- **Plan stage** (`run_stage("remediation","plan")`): correlation insight, priority rationale, per-option assessment, recommended path, change package. Contextual score and ranks are computed from the listed factors, never taken from the model.
+- **Human gate**: Approve or Reject with a mandatory reviewer comment, logged to the audit log. Reject raises a time-boxed risk-acceptance exception and the exposure stays unreduced.
+- **Simulated customer environment** (`app/exposure_remediation/simulator.py`): host state, an ITSM change record state machine (New → Assess → Authorize → Scheduled → Implement → Review → Closed), an Ansible-style executor that mutates host state, and a verification rescan that reads that same state. The rescan result is caused by what was executed, not scripted.
+- **Revalidate stage** (`run_stage("remediation","revalidate")`): closure narrative, residual risk and next actions. The rescan result is authoritative.
+- **Scenarios**: A clean patch (closed, exposure 96→4); B compensating control under a change freeze (closed with residual risk, 100→30); C nested vulnerable jar (closure blocked, "Re-plan" opens a corrective change that needs approval again).
+- **Live intel (optional)**: CISA KEV and FIRST EPSS enrichment (`app/data/live_intel.py`), cached, time-boxed, with a snapshot fallback.
+- **Datasets**: `exposure_signals`, `service_identity_context`, `change_records`, `rescan_results` (generated with their own RNG so the original eight datasets stay byte-stable).
+- **KPIs**: Verified Closure Rate, Closed Without Reduction, Exposure Reduction, Remediation MTTR, Approval Turnaround. Live demo runs in a session move these on the dashboard.
+
 ---
 
 # 6. Specialized Agent Catalog & Sandbox
 
-The platform features **10 specialized security agents** divided evenly between CTEM and DevSecOps.
+The platform features **15 specialized security agents**: five each for CTEM, DevSecOps and Exposure Remediation.
 
 | Domain | Agent Name | Lifecycle Stage | Primary Focus |
 |---|---|---|---|
@@ -279,6 +301,13 @@ The platform features **10 specialized security agents** divided evenly between 
 | **DevSecOps** | `FixGenerationAgent` | Stage 3 — Fix Generation | Clean parameterized query patches & unified diff generation |
 | **DevSecOps** | `PRValidationAgent` | Stage 4 — PR Validation | Pull request packaging & automated security gate auditing |
 | **DevSecOps** | `DeploymentApprovalAgent` | Stage 5 — Deployment Gate | HITL gate routing, policy enforcement, and deployment release |
+| **Exposure Remediation** | `ExposureCorrelationAgent` | Step 2 — Correlation | Joins signal, identity, business service and threat context into an attack path |
+| **Exposure Remediation** | `PriorityExplainerAgent` | Step 3 — Priority Explanation | Why it matters here, not merely CVSS; ranking against peer findings |
+| **Exposure Remediation** | `RemediationPlannerAgent` | Step 4 — Remediation Path | Patch / config / compensating control / exception trade-offs and blockers |
+| **Exposure Remediation** | `ChangePackageAgent` | Step 5 — Change Package | Approvable change record: risk, evidence, mitigation, rollback, validation |
+| **Exposure Remediation** | `RevalidationAgent` | Steps 8-9 — Rescan & Closure | Interprets the rescan, decides whether exposure fell, writes closure evidence |
+
+The first four Exposure Remediation roles run as one orchestrated planning stage at runtime; each can also be tested on its own in the sandbox.
 
 ## Live Sandbox Console
 Accessible via **Agents** in the sidebar:
@@ -293,12 +322,14 @@ Accessible via **Agents** in the sidebar:
 # 7. Executive Command Center Dashboard
 
 Rendered on Tab 0 of the Home page:
-1. **Dual Radial Gauges**:
+1. **Three Radial Gauges**:
    - **CTEM**: Exposure Mitigation Shield percentage.
    - **DevSecOps**: Secure Code Velocity percentage.
+   - **Remediation**: Verified Exposure Reduction percentage.
 2. **Segregated Executive Scorecards**:
    - **CTEM KPIs**: Exposure Shield (%), SLA Compliance (%), KEV Collision Rate (%), False Positive Suppression (%).
    - **DevSecOps KPIs**: Auto-Fix Success Rate (%), Deployment Gate Pass Rate (%), PR Approval Rate (%), Findings Per Commit.
+   - **Exposure Remediation KPIs**: Verified Closure Rate (%), Exposure Reduction (%), Tickets Closed Without Reduction (%), Signal-to-Verified Speed (h).
 3. **Operational Performance Index**:
    - Calculated AI Readiness Index (weighted score across all ingested telemetry).
    - Active Exposure Suppression Rate.
