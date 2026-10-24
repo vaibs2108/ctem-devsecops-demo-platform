@@ -268,7 +268,7 @@ AGENTS_DB = {
     },
     "Exposure Remediation": {
         "color": ACCENT_PURPLE,
-        "framework": "NIST SP 800-40r4, CISA KEV / BOD 22-01, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
+        "framework": "NIST SP 800-40r4, CISA KEV / BOD 26-04, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
         "note": "At runtime the first four roles run as one orchestrated planning stage, and RevalidationAgent runs after the customer's tooling executes the approved change. Each agent can also be tested on its own below.",
         "agents": [
             {

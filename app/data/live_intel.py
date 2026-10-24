@@ -13,7 +13,10 @@ import logging
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Tuple
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +47,34 @@ def _get_json(url: str, timeout: float) -> Any:
         return json.load(resp)
 
 
-def fetch_kev_index() -> Optional[Dict[str, Dict[str, Any]]]:
-    def load() -> Dict[str, Dict[str, Any]]:
+def fetch_kev_catalog() -> Optional[Dict[str, Any]]:
+    """Whole KEV catalog: {"version", "date_released", "fetched_at", "entries": {cve: record}}."""
+    def load() -> Dict[str, Any]:
         data = _get_json(KEV_URL, timeout=8)
-        return {v["cveID"]: v for v in data["vulnerabilities"]}
+        return {
+            "version": data.get("catalogVersion", ""), "date_released": data.get("dateReleased", ""),
+            "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "entries": {v["cveID"]: v for v in data["vulnerabilities"]},
+        }
     return _cached("kev", load)
+
+
+def fetch_kev_index() -> Optional[Dict[str, Dict[str, Any]]]:
+    catalog = fetch_kev_catalog()
+    return catalog["entries"] if catalog else None
+
+
+def fetch_kev_dataframe() -> Optional[pd.DataFrame]:
+    """The live KEV catalog as a table (None when the feed is unreachable)."""
+    catalog = fetch_kev_catalog()
+    if not catalog:
+        return None
+    df = pd.DataFrame(list(catalog["entries"].values()))
+    if "cwes" in df.columns:
+        df["cwes"] = df["cwes"].apply(lambda v: ", ".join(v) if isinstance(v, list) else v)
+    cols = ["cveID", "vendorProject", "product", "vulnerabilityName", "dateAdded", "dueDate", "knownRansomwareCampaignUse",
+            "forensicTriage", "requiredAction", "cwes", "notes", "shortDescription"]
+    return df[[c for c in cols if c in df.columns]].sort_values("dateAdded", ascending=False).reset_index(drop=True)
 
 
 def fetch_epss(cve: str) -> Optional[Dict[str, Any]]:
@@ -63,13 +89,15 @@ def enrich_threat(cve: str, snapshot: Dict[str, Any]) -> Dict[str, Any]:
     """Return a copy of the threat dict, refreshed from live feeds where they respond."""
     threat = copy.deepcopy(snapshot)
     live_parts = 0
-    kev_index = fetch_kev_index()
-    if kev_index is not None:
-        entry = kev_index.get(cve)
+    catalog = fetch_kev_catalog()
+    if catalog is not None:
+        entry = catalog["entries"].get(cve)
         threat["kev"] = entry is not None
         if entry:
             threat["kev_date_added"] = entry.get("dateAdded", threat.get("kev_date_added"))
             threat["ransomware_use"] = entry.get("knownRansomwareCampaignUse", threat.get("ransomware_use"))
+            threat["kev_record"] = entry
+            threat["kev_source"] = {"mode": "live", "catalog_version": catalog["version"], "as_of": catalog["fetched_at"]}
         live_parts += 1
     epss = fetch_epss(cve)
     if epss is not None:

@@ -1,0 +1,73 @@
+# Extract of the official MITRE ATT&CK Enterprise dataset: only the techniques used by the
+# Exposure Remediation scenarios. Regenerate from the STIX bundle to refresh; do not hand-edit.
+source: MITRE ATT&CK Enterprise (official STIX data, github.com/mitre-attack/attack-stix-data)
+attack_version: '20.0'
+extracted_on: '2026-10-24'
+techniques:
+- id: T1190
+  name: Exploit Public-Facing Application
+  tactics:
+  - Initial Access
+  description: Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially
+    access a network. The weakness in the system can be a software bug, a temporary glitch, or a misconfiguration.
+  url: https://attack.mitre.org/techniques/T1190
+  stix_id: attack-pattern--3f886f2a-874f-4333-b794-aa6075009b1c
+  modified: '2026-05-12'
+- id: T1552
+  name: Unsecured Credentials
+  tactics:
+  - Credential Access
+  description: Adversaries may search compromised systems to find and obtain insecurely stored credentials.
+    These credentials can be stored and/or misplaced in many locations on a system, including plaintext
+    files (e.g. Shell History), operating system or application-specific repositories (e.g. Credentials
+    in Registry),  or other specialized files/artifacts (e.g. Private Keys).
+  url: https://attack.mitre.org/techniques/T1552
+  stix_id: attack-pattern--435dfb86-2697-4867-85b5-2fef496c0517
+  modified: '2025-10-24'
+- id: T1552.001
+  name: Credentials In Files
+  tactics:
+  - Credential Access
+  description: Adversaries may search local file systems and remote file shares for files containing insecurely
+    stored credentials. These can be files created by users to store their own credentials, shared credential
+    stores for a group of individuals, configuration files containing passwords for a system or service,
+    or source code/binary files containing embedded passwords.
+  url: https://attack.mitre.org/techniques/T1552/001
+  stix_id: attack-pattern--837f9164-50af-4ac0-8219-379d8a74cefc
+  modified: '2026-09-11'
+- id: T1552.005
+  name: Cloud Instance Metadata API
+  tactics:
+  - Credential Access
+  description: Adversaries may attempt to access the Cloud Instance Metadata API to collect credentials
+    and other sensitive data.
+  url: https://attack.mitre.org/techniques/T1552/005
+  stix_id: attack-pattern--19bf235b-8620-4997-b5b4-94e0659ed7c3
+  modified: '2026-05-12'
+- id: T1005
+  name: Data from Local System
+  tactics:
+  - Collection
+  description: Adversaries may search local system sources, such as file systems, configuration files,
+    local databases, virtual machine files, or process memory, to find files of interest and sensitive
+    data prior to Exfiltration.
+  url: https://attack.mitre.org/techniques/T1005
+  stix_id: attack-pattern--3c4a2599-71ee-4405-ba1e-0e28414b4bc5
+  modified: '2026-09-11'
+- id: T1021
+  name: Remote Services
+  tactics:
+  - Lateral Movement
+  description: Adversaries may use Valid Accounts to log into a service that accepts remote connections,
+    such as telnet, SSH, and VNC. The adversary may then perform actions as the logged-on user.
+  url: https://attack.mitre.org/techniques/T1021
+  stix_id: attack-pattern--54a649ff-439a-41a4-9856-8d144a2551ba
+  modified: '2025-10-24'
+- id: T1530
+  name: Data from Cloud Storage
+  tactics:
+  - Collection
+  description: Adversaries may access data from cloud storage.
+  url: https://attack.mitre.org/techniques/T1530
+  stix_id: attack-pattern--3298ce88-1628-43b1-87d9-0b5336b193d7
+  modified: '2026-05-12'

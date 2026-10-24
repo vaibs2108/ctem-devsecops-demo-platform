@@ -59,6 +59,7 @@ def _scenario_a(now: datetime) -> Dict[str, Any]:
         "expected_outcome": "reduced_verified",
         "cycle": 1,
         "confidence": 93,
+        "default_constraints": ["maintenance_window_only"],
         "signal": {
             "signal_id": f"EXP-{now:%y%m%d}-0042",
             "source": "Vulnerability scanner (authenticated)",
@@ -215,6 +216,7 @@ def _scenario_b(now: datetime) -> Dict[str, Any]:
         "expected_outcome": "reduced_residual",
         "cycle": 1,
         "confidence": 90,
+        "default_constraints": ["change_freeze", "maintenance_window_only"],
         "signal": {
             "signal_id": f"EXP-{now:%y%m%d}-0057",
             "source": "Vulnerability scanner (authenticated)",
@@ -374,6 +376,7 @@ def _scenario_c(now: datetime) -> Dict[str, Any]:
         "expected_outcome": "blocked_still_present",
         "cycle": 1,
         "confidence": 88,
+        "default_constraints": ["maintenance_window_only", "rollback_required"],
         "signal": {
             "signal_id": f"EXP-{now:%y%m%d}-0063",
             "source": "Package inventory agent",
@@ -643,6 +646,25 @@ def build_plan_payload(scenario: Dict[str, Any]) -> Dict[str, Any]:
             opt["ai_assessment"] = f"Blocked: {opt['blocked_reason']}. {opt['tradeoff']}"
         else:
             opt["ai_assessment"] = opt["tradeoff"]
+
+    from app.exposure_remediation import reference
+    inputs = scenario.get("analyst_inputs") or {}
+    framework_ids = inputs.get("frameworks") or reference.default_framework_ids(scenario)
+    constraint_ids = inputs["constraints"] if "constraints" in inputs else scenario.get("default_constraints", [])
+    conflicts = reference.constraint_conflicts(scenario, constraint_ids)
+    for opt in options:
+        if opt["id"] in conflicts:
+            opt["constraint_conflicts"] = conflicts[opt["id"]]
+            opt["ai_assessment"] += " Conflicts with the selected constraint(s): " + "; ".join(conflicts[opt["id"]]) + "."
+    controls = reference.evaluate_controls(scenario, framework_ids)
+    applying = [c for c in controls if c["status"] == "applies"]
+    drivers = ", ".join(f"{c['framework']} {c['control_id']}" for c in applying[:5]) or "none"
+    due = (threat.get("kev_record") or {}).get("dueDate")
+    compliance_insight = (
+        f"{len(applying)} of {len(controls)} selected controls apply to {service['name']}: {drivers}."
+        + (f" The CISA KEV due date for {sig['cve']} is {due}, a reference benchmark here (binding only for US federal civilian agencies)." if due else "")
+        + (" Selected constraints: " + "; ".join(c["label"] for c in reference.constraint_catalog() if c["id"] in constraint_ids) + "." if constraint_ids else "")
+    )
     correlation = {
         "signal_id": sig["signal_id"], "asset": copy.deepcopy(asset), "service": copy.deepcopy(service), "identity": copy.deepcopy(ident),
         "threat": copy.deepcopy(threat), "exposure_path": copy.deepcopy(scenario["exposure_path"]),
@@ -662,6 +684,7 @@ def build_plan_payload(scenario: Dict[str, Any]) -> Dict[str, Any]:
         "remediation_options": options,
         "recommended_option": scenario["recommended_option"],
         "recommended_reason": f"{rec['title']}. {rec['tradeoff']}",
+        "compliance_insight": compliance_insight,
         "change_package": copy.deepcopy(scenario["change_package"]),
         "human_approval_required": True,
         "findings": [{

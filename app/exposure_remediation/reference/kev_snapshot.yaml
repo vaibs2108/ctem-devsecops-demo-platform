@@ -1,0 +1,61 @@
+# Snapshot of the real CISA KEV entries used by the scenarios (fallback when the live feed is unreachable).
+source: CISA Known Exploited Vulnerabilities Catalog
+url: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+catalog_version: 2026.10.23
+date_released: '2026-10-23T19:30:18.9209Z'
+retrieved_on: '2026-10-24'
+entries:
+  CVE-2024-3400:
+    cveID: CVE-2024-3400
+    vendorProject: Palo Alto Networks
+    product: PAN-OS
+    vulnerabilityName: Palo Alto Networks PAN-OS Command Injection Vulnerability
+    dateAdded: '2024-04-12'
+    shortDescription: Palo Alto Networks PAN-OS GlobalProtect feature contains a command injection vulnerability
+      that allows an unauthenticated attacker to execute commands with root privileges on the firewall.
+    requiredAction: Apply mitigations per vendor instructions as they become available. Otherwise, users
+      with vulnerable versions of affected devices should enable Threat Prevention IDs available from
+      the vendor. See the vendor bulletin for more details and a patch release schedule.
+    dueDate: '2024-04-19'
+    knownRansomwareCampaignUse: Known
+    forensicTriage: 'No'
+    notes: https://security.paloaltonetworks.com/CVE-2024-3400 ;   https://nvd.nist.gov/vuln/detail/CVE-2024-3400
+    cwes:
+    - CWE-20
+    - CWE-77
+  CVE-2023-22515:
+    cveID: CVE-2023-22515
+    vendorProject: Atlassian
+    product: Confluence Data Center and Server
+    vulnerabilityName: Atlassian Confluence Data Center and Server Broken Access Control Vulnerability
+    dateAdded: '2023-10-05'
+    shortDescription: Atlassian Confluence Data Center and Server contains a broken access control vulnerability
+      that allows an attacker to create unauthorized Confluence administrator accounts and access Confluence.
+    requiredAction: Apply mitigations per vendor instructions or discontinue use of the product if mitigations
+      are unavailable. Check all affected Confluence instances for evidence of compromise per vendor instructions
+      and report any positive findings to CISA.
+    dueDate: '2023-10-13'
+    knownRansomwareCampaignUse: Known
+    forensicTriage: 'No'
+    notes: https://confluence.atlassian.com/security/cve-2023-22515-privilege-escalation-vulnerability-in-confluence-data-center-and-server-1295682276.html;  https://nvd.nist.gov/vuln/detail/CVE-2023-22515
+    cwes: []
+  CVE-2021-44228:
+    cveID: CVE-2021-44228
+    vendorProject: Apache
+    product: Log4j2
+    vulnerabilityName: Apache Log4j2 Remote Code Execution Vulnerability
+    dateAdded: '2021-12-10'
+    shortDescription: Apache Log4j2 contains a vulnerability where JNDI features do not protect against
+      attacker-controlled JNDI-related endpoints, allowing for remote code execution.
+    requiredAction: 'For all affected software assets for which updates exist, the only acceptable remediation
+      actions are: 1) Apply updates; OR 2) remove affected assets from agency networks. Temporary mitigations
+      using one of the measures provided at https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures
+      are only acceptable until updates are available.'
+    dueDate: '2021-12-24'
+    knownRansomwareCampaignUse: Known
+    forensicTriage: 'No'
+    notes: https://nvd.nist.gov/vuln/detail/CVE-2021-44228
+    cwes:
+    - CWE-20
+    - CWE-400
+    - CWE-502

@@ -1,0 +1,180 @@
+# Regulations, standards and references that correlate with the Exposure Remediation scenarios.
+#
+# Each control states an obligation in paraphrase (not a quotation), what evidence the run itself
+# produces for it, and an `applies_when` rule evaluated against the scenario facts. The app turns that
+# into an Applies / Not applicable table.
+#
+# Verification status: CISA BOD 26-04 and NIST SP 800-40r4 were checked against the publisher pages when
+# this file was written (BOD 22-01 is revoked and superseded by BOD 26-04). The PCI DSS, ISO/IEC 27001,
+# SOX and ITIL 4 entries are paraphrases of well-known controls and have NOT been checked against the paid
+# or member-only source documents: have your compliance team confirm them before any external use.
+#
+# applies_when keys (all must match; omit a key to ignore it):
+#   always: true                      -> applies to every scenario
+#   kev: true                         -> CVE is in the CISA KEV catalog
+#   internet_exposed: true            -> asset is reachable from the internet
+#   regulatory_scope_any: [..]        -> service regulatory scope contains any of these tokens
+#   option_types_any: [..]            -> recommended option type is one of these
+# not_applicable_reason is shown when the rule does not match.
+
+frameworks:
+  - id: cisa_bod_26_04
+    name: CISA BOD 26-04
+    kind: regulation
+    full_name: "BOD 26-04: Prioritizing Security Updates Based on Risk (issued 2026-06-10; supersedes BOD 22-01)"
+    source: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk
+    binding_for: "US Federal Civilian Executive Branch agencies; used here as a reference benchmark for everyone else."
+    controls:
+      - id: KEV-DUE
+        title: Remediate KEV catalog vulnerabilities by the catalog due date
+        obligation: >-
+          Vulnerabilities in the KEV catalog are remediated no later than the due date CISA sets for the
+          entry (calendar days; timelines tighten for internet-exposed assets).
+        evidence: Change record, approval, and verification rescan (steps 6-9)
+        applies_when: {kev: true}
+        not_applicable_reason: CVE is not in the CISA KEV catalog.
+      - id: KEV-TRIAGE
+        title: Forensic triage where the KEV entry requires it
+        obligation: >-
+          Where the KEV entry flags forensic triage, the asset is also triaged for compromise in addition to
+          being remediated or mitigated.
+        evidence: Compromise-check task in the change plan (where applicable)
+        applies_when: {kev: true, kev_forensic_triage: true}
+        not_applicable_reason: The KEV entry does not require forensic triage.
+  - id: nist_800_40r4
+    name: NIST SP 800-40r4
+    kind: standard
+    full_name: "NIST SP 800-40 Rev. 4: Guide to Enterprise Patch Management Planning: Preventive Maintenance for Technology (April 2022)"
+    source: https://csrc.nist.gov/pubs/sp/800/40/r4/final
+    controls:
+      - id: 3.5.2
+        title: Emergency patching scenario
+        obligation: >-
+          Patching in a crisis, such as a severe or actively exploited vulnerability, is handled as efficiently as
+          possible to prevent imminent exploitation.
+        evidence: Emergency change, approved window, post-change verification (steps 5-9)
+        applies_when: {kev: true, option_types_any: [patch]}
+        not_applicable_reason: The recommended path is not an emergency patch.
+      - id: 3.5.3
+        title: Emergency mitigation scenario
+        obligation: >-
+          When a patch is not yet usable, temporary mitigations are applied and tracked, and may need to be rolled
+          back after the permanent fix.
+        evidence: Compensating control change plus tracked follow-up fix (steps 5-10)
+        applies_when: {kev: true, option_types_any: [compensating_control, config]}
+        not_applicable_reason: The recommended path is a patch, not an emergency mitigation.
+  - id: pci_dss_4
+    name: PCI DSS v4.0
+    kind: regulation
+    full_name: Payment Card Industry Data Security Standard v4.0
+    source: https://www.pcisecuritystandards.org/document_library/
+    controls:
+      - id: "6.3.3"
+        title: Critical and high-security patches installed within one month of release
+        obligation: >-
+          Critical or high-security patches and updates are installed within one month of release; other patches
+          within a timeframe set by the entity's risk ranking.
+        evidence: Change record with implementation date (steps 5, 7)
+        applies_when: {regulatory_scope_any: ["PCI DSS"]}
+        not_applicable_reason: The service is not in PCI DSS scope.
+      - id: "6.5.1"
+        title: Production changes follow documented change-control procedures
+        obligation: >-
+          Changes are made under procedures that record the reason, security impact, authorised approval,
+          testing, and how to return to a secure state on failure.
+        evidence: Change package, approval with reviewer basis, rollback plan (steps 5-6)
+        applies_when: {regulatory_scope_any: ["PCI DSS"]}
+        not_applicable_reason: The service is not in PCI DSS scope.
+      - id: "11.3.1"
+        title: Internal vulnerability scans resolve high and critical findings, confirmed by rescan
+        obligation: >-
+          High-risk and critical vulnerabilities are resolved and rescans confirm the resolution.
+        evidence: Verification rescan before/after (step 8)
+        applies_when: {regulatory_scope_any: ["PCI DSS"]}
+        not_applicable_reason: The service is not in PCI DSS scope.
+  - id: iso_27001_2022
+    name: ISO/IEC 27001:2022
+    kind: standard
+    full_name: ISO/IEC 27001:2022 Annex A
+    source: https://www.iso.org/standard/27001
+    controls:
+      - id: A.8.8
+        title: Management of technical vulnerabilities
+        obligation: >-
+          Information on technical vulnerabilities is obtained, the organisation's exposure is evaluated, and
+          appropriate measures are taken.
+        evidence: Correlation and priority analysis plus the remediation outcome (steps 2-3, 8-9)
+        applies_when: {regulatory_scope_any: ["ISO 27001"]}
+        not_applicable_reason: The service is not in ISO 27001 scope.
+      - id: A.8.32
+        title: Change management
+        obligation: Changes to information systems are subject to change management procedures.
+        evidence: ITSM change record and approval trail (steps 5-7)
+        applies_when: {regulatory_scope_any: ["ISO 27001"]}
+        not_applicable_reason: The service is not in ISO 27001 scope.
+  - id: sox_itgc
+    name: SOX IT general controls
+    kind: regulation
+    full_name: Sarbanes-Oxley Section 404 IT general controls (change management)
+    source: https://www.sec.gov/spotlight/sarbanes-oxley.htm
+    controls:
+      - id: ITGC-CM
+        title: Changes to in-scope systems are authorised, tested and traceable
+        obligation: >-
+          Changes to systems that support financial reporting are authorised before implementation, tested, and
+          traceable, with segregation between those who request and approve.
+        evidence: Approval by a named approver distinct from the planner, audit log entry (step 6)
+        applies_when: {regulatory_scope_any: ["SOX"]}
+        not_applicable_reason: The service is not in SOX scope.
+  - id: itil4
+    name: ITIL 4 Change Enablement
+    kind: standard
+    full_name: ITIL 4 Change Enablement practice
+    source: https://www.axelos.com/certifications/itil-service-management
+    controls:
+      - id: EMERG-CHG
+        title: Emergency and expedited changes follow an agreed fast path
+        obligation: >-
+          Urgent changes use an emergency or expedited authorisation path while keeping risk assessment,
+          approval and a back-out plan.
+        evidence: Change type, approver role, rollback plan (steps 5-6)
+        applies_when: {always: true}
+        not_applicable_reason: ""
+
+references:
+  - id: cisa_kev
+    name: CISA KEV catalog
+    kind: reference
+    description: Authoritative list of vulnerabilities exploited in the wild.
+    url: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+  - id: mitre_attack
+    name: MITRE ATT&CK
+    kind: reference
+    description: Authoritative knowledge base of adversary tactics and techniques.
+    url: https://attack.mitre.org/
+  - id: first_epss
+    name: FIRST EPSS
+    kind: reference
+    description: Daily exploit-probability scores per CVE.
+    url: https://www.first.org/epss/
+
+# Operational constraints the analyst can select (informs the AI and flags conflicts; it never changes the plan).
+constraints:
+  - id: maintenance_window_only
+    label: Changes only inside an approved maintenance window
+    conflicts_with: []
+  - id: change_freeze
+    label: Change freeze in effect (disruptive changes need a CAB exception)
+    conflicts_with: [disruptive]
+  - id: zero_downtime
+    label: Zero downtime required
+    conflicts_with: [downtime]
+  - id: vendor_patch_uncertified
+    label: Vendor patch not yet certified in staging
+    conflicts_with: [patch]
+  - id: rollback_required
+    label: Tested rollback required before approval
+    conflicts_with: []
+  - id: owner_notification
+    label: Service owner must be notified before execution
+    conflicts_with: []

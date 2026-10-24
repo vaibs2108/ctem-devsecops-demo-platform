@@ -39,9 +39,36 @@ UC_INFO = {
             "service_identity_context": "🧩 Service & Identity Context (business service, owner, privileged identity)",
             "change_records": "📝 Change Records (ITSM changes and approvals)",
             "rescan_results": "🔁 Rescan Results (verified exposure before/after)",
+            "cisa_kev_catalog": "🛡️ CISA KEV Catalog (authoritative, live feed)",
+            "mitre_attack_techniques": "🧬 MITRE ATT&CK Techniques in Use (authoritative)",
         }
     }
 }
+
+# Authoritative reference datasets are not synthetic: they come from CISA and MITRE, not the data generator.
+REFERENCE_DATASETS = {"cisa_kev_catalog", "mitre_attack_techniques"}
+
+
+def _load_reference_dataset(key: str):
+    """Return (DataFrame, provenance note) for an authoritative reference dataset."""
+    if key == "cisa_kev_catalog":
+        from app.data.live_intel import fetch_kev_catalog, fetch_kev_dataframe
+        df = fetch_kev_dataframe()
+        if df is not None:
+            meta = fetch_kev_catalog()
+            return df, f"Live CISA Known Exploited Vulnerabilities catalog v{meta['version']}, fetched {meta['fetched_at']}. Source: cisa.gov."
+        from app.exposure_remediation import reference
+        snap = reference._load("kev_snapshot.yaml")
+        df = pd.DataFrame(list(snap.get("entries", {}).values()))
+        if "cwes" in df.columns:
+            df["cwes"] = df["cwes"].apply(lambda v: ", ".join(v) if isinstance(v, list) else v)
+        return df, f"Live feed unreachable: showing the saved snapshot of the {len(df)} KEV entries used by the scenarios (catalog v{snap.get('catalog_version')}, retrieved {snap.get('retrieved_on')})."
+    from app.exposure_remediation import reference
+    meta = reference.attack_meta()
+    df = pd.DataFrame(reference.attack_techniques())
+    df["tactics"] = df["tactics"].apply(lambda v: ", ".join(v))
+    df = df[["id", "name", "tactics", "description", "url", "modified"]]
+    return df, f"Official MITRE ATT&CK Enterprise v{meta['version']} records for the techniques used by the scenarios (extracted {meta['extracted_on']}). Source: attack.mitre.org."
 
 def render_data_explorer(datasets):
     """Render the raw dataset browser."""
@@ -76,16 +103,24 @@ def render_data_explorer(datasets):
     )
 
     # Retrieve DataFrame
-    if selected_ds_key not in datasets:
+    reference_note = ""
+    if selected_ds_key in REFERENCE_DATASETS:
+        df, reference_note = _load_reference_dataset(selected_ds_key)
+    elif selected_ds_key not in datasets:
         st.warning(f"Dataset '{selected_ds_key}' not found in registry.")
         return
-
-    df = datasets[selected_ds_key]
+    else:
+        df = datasets[selected_ds_key]
 
     # Render a statistical summary inside a glassmorphic card
     num_rows = len(df)
     num_cols = len(df.columns)
     
+    description = (
+        f"<strong>Authoritative reference data, not synthetic.</strong> {reference_note}" if reference_note else
+        "This dataset represents fully synthetic, high-fidelity security telemetry generated for the enterprise demonstration. "
+        "It aligns with schema standards such as MITRE ATT&CK, NIST CSF 2.0, CVE, and OSSEM."
+    )
     summary_html = f"""
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h4 style="margin: 0; color: {accent_color};">{dataset_options[selected_ds_key]}</h4>
@@ -95,8 +130,7 @@ def render_data_explorer(datasets):
         </div>
     </div>
     <div style="font-size: 0.85rem; color: #a0a0c0; line-height: 1.5;">
-        This dataset represents fully synthetic, high-fidelity security telemetry generated for the enterprise demonstration.
-        It aligns with schema standards such as MITRE ATT&CK, NIST CSF 2.0, CVE, and OSSEM.
+        {description}
     </div>
     """
     

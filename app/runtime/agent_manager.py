@@ -46,7 +46,7 @@ AGENT_NAME_MAP: Dict[str, Dict[str, str]] = {
 FRAMEWORK_REFS: Dict[str, str] = {
     "ctem": "NIST CSF 2.0, CISA KEV, CVSS v3.1, EPSS, CIS Benchmarks",
     "devsecops": "OWASP Top 10 2021, CWE Top 25, NIST SSDF",
-    "remediation": "NIST SP 800-40r4, CISA KEV / BOD 22-01, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
+    "remediation": "NIST SP 800-40r4, CISA KEV / BOD 26-04, FIRST EPSS, ITIL 4 Change Enablement, MITRE ATT&CK",
 }
 
 REMEDIATION_DATASETS = ("exposure_signals", "service_identity_context", "change_records", "rescan_results")
@@ -494,8 +494,9 @@ REQUIREMENTS:
 3. OPTIONS: for EVERY option id in the catalogue give a one-sentence "ai_assessment" weighing risk reduction, change risk, downtime, and any blocker (freeze, policy).
 4. RECOMMENDATION: set "recommended_option" to the catalogue's recommended id and give "recommended_reason".
 5. CHANGE PACKAGE: write risk_assessment, evidence (3 items), mitigation_steps (one per executed task group, same order), rollback_plan, validation_criteria. Be concrete: versions, commands, window.
-6. HUMAN GATE: "human_approval_required" is always true.
-7. AI CONFIDENCE: integer 40-99, varied realistically.
+6. COMPLIANCE: write "compliance_insight" (2-3 sentences) from "regulatory_obligations" using ONLY entries whose status is "applies"; name the controls that drive timing or evidence. If "constraint_conflicts" lists a conflict for an option, say how the plan copes with it. The recommended option never changes because of constraints.
+7. HUMAN GATE: "human_approval_required" is always true.
+8. AI CONFIDENCE: integer 40-99, varied realistically.
 
 RESPONSE FORMAT (strict JSON, no other keys):
 {{
@@ -507,6 +508,7 @@ RESPONSE FORMAT (strict JSON, no other keys):
     "remediation_options": [{{"id": "<option id>", "ai_assessment": "<one sentence>"}}],
     "recommended_option": "<option id>",
     "recommended_reason": "<one or two sentences>",
+    "compliance_insight": "<2-3 sentences>",
     "change_package": {{"risk_assessment": "<text>", "evidence": ["<e1>", "<e2>", "<e3>"], "mitigation_steps": ["<s1>", "<s2>"], "rollback_plan": "<text>", "validation_criteria": ["<c1>", "<c2>"]}},
     "human_approval_required": true,
     "recommendations": ["<actionable recommendation>"]
@@ -648,6 +650,21 @@ Analyse the full dataset aggregation above. Produce your structured JSON respons
             pr = build_priority_block(scenario)
             truth["computed_priority"] = {k: pr[k] for k in ("cvss", "cvss_rank", "contextual_score", "contextual_rank", "priority_label", "sla_hours", "total")}
             truth["peer_findings"] = [{"cve": r["cve"], "asset": r["asset"], "cvss": r["cvss"], "contextual": r["contextual"], "label": r["label"]} for r in pr["ranked"] if not r["self"]]
+
+            from app.exposure_remediation import reference
+            inputs = scenario.get("analyst_inputs") or {}
+            fw_ids = inputs.get("frameworks") or reference.default_framework_ids(scenario)
+            con_ids = inputs["constraints"] if "constraints" in inputs else scenario.get("default_constraints", [])
+            truth["regulatory_obligations"] = [
+                {"framework": c["framework"], "control": c["control_id"], "title": c["title"], "status": c["status"],
+                 "obligation": c["obligation"] if c["status"] == "applies" else c["reason"]}
+                for c in reference.evaluate_controls(scenario, fw_ids)
+            ]
+            truth["selected_constraints"] = [c["label"] for c in reference.constraint_catalog() if c["id"] in con_ids]
+            truth["constraint_conflicts"] = reference.constraint_conflicts(scenario, con_ids)
+            record = (scenario["threat"].get("kev_record") or {})
+            if record:
+                truth["kev_record"] = {k: record.get(k) for k in ("vendorProject", "product", "vulnerabilityName", "dateAdded", "dueDate", "requiredAction", "knownRansomwareCampaignUse", "forensicTriage")}
         agg_text = json.dumps(aggregation, indent=1, default=str)
         if len(agg_text) > 3500:
             agg_text = agg_text[:3500] + "\n... [truncated for token budget]"
@@ -809,6 +826,7 @@ Produce your structured JSON response now.
             "remediation_options": parsed.get("remediation_options", []),
             "recommended_option": parsed.get("recommended_option", ""),
             "recommended_reason": parsed.get("recommended_reason", ""),
+            "compliance_insight": parsed.get("compliance_insight", ""),
             "change_package": parsed.get("change_package", {}),
             "closure_evidence": parsed.get("closure_evidence", {}),
             "verdict": parsed.get("verdict", ""),
@@ -856,6 +874,8 @@ Produce your structured JSON response now.
                     opt["ai_assessment"] = note; accepted += 1
             if text(llm.get("recommended_reason"), 20):
                 merged["recommended_reason"] = text(llm["recommended_reason"], 20); accepted += 1
+            if text(llm.get("compliance_insight"), 40):
+                merged["compliance_insight"] = text(llm["compliance_insight"], 40); accepted += 1
             pkg = llm.get("change_package") if isinstance(llm.get("change_package"), dict) else {}
             for key, minimum in (("risk_assessment", 30), ("rollback_plan", 20)):
                 if text(pkg.get(key), minimum):

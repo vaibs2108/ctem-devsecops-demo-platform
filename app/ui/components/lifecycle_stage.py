@@ -334,6 +334,13 @@ def get_agent_details_for_stage(use_case: str, stage_key: str) -> dict:
                 "output": "Remediation playbooks, custom SLA timers, and successfully synchronized Jira/ServiceNow tickets."
             }
         },
+        "remediation": {
+            "analysis": {
+                "agent": "ExposureRemediationPlanner",
+                "analysis": "Correlates the exposure with identity, business service, KEV/EPSS and ATT&CK context, explains priority beyond CVSS, maps applicable obligations, and drafts a remediation path and change package for approval.",
+                "output": "Priority explanation, regulatory mapping, ranked remediation options and an approvable change package; after approval, simulated execution, verification rescan and closure evidence."
+            }
+        },
     }
     return mappings.get(use_case, {}).get(stage_key, {
         "agent": "SecurityAgent",
